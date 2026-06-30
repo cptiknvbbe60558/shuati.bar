@@ -5353,3 +5353,57 @@ body.practice-fit .dock-secondary-tabs .tab-button[data-mode="exam300"] {
 .glass-menu-button {
   display: none !important;
 }
+
+/* Keep the result marker beside the counter so answering never moves the card. */
+body.practice-fit .question-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+body.practice-fit .question-head .badges {
+  width: 100%;
+}
+
+body.practice-fit .question-progress-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 25px;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+body.practice-fit .question-progress-row .question-index {
+  flex: 0 0 auto;
+  padding-top: 0;
+}
+
+body.practice-fit .question-progress-row .question-status {
+  display: inline-grid;
+  min-width: 64px;
+  min-height: 25px;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+body.practice-fit .question-progress-row .question-status-empty {
+  visibility: hidden;
+}
+
+@media (max-width: 380px) {
+  body.practice-fit .question-progress-row {
+    min-height: 24px;
+  }
+
+  body.practice-fit .question-progress-row .question-status {
+    min-width: 60px;
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 10.5px;
+  }
+}

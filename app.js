@@ -55,8 +55,15 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-  const ASSET_VERSION = "20260630_0045_shuati_domain";
-  const REMOTE_SYNC_ENABLED = !["shuati.bar", "www.shuati.bar"].includes(window.location.hostname);
+  const ASSET_VERSION = "20260630_1320_protected_cloud_sync";
+  const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
+  const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
+  const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
+  const PROTECTED_CLOUD_SEED_SALT = [
+    "shuati.bar",
+    "customer-manager-quiz",
+    "favorites-wrong-v1"
+  ];
 
   let questions = bank.questions || [];
   let categories = bank.categories || [];
@@ -70,6 +77,11 @@
   let remoteSyncTimer = null;
   let remoteSyncReady = false;
   let remoteSyncStaffId = "";
+  let remoteSyncToken = "";
+  let remoteSyncTokenStaffId = "";
+  let remoteSyncTokenExpiresAt = 0;
+  let protectedSyncDirty = false;
+  let protectedSyncRevision = 0;
   let examTimer = null;
   if ("scrollRestoration" in history) {
     history.scrollRestoration = "manual";
@@ -87,6 +99,7 @@
     progress: {},
     wrong: {},
     favorites: {},
+    favoriteSync: {},
     notes: {},
     examExposure: {},
     optionOrders: {},
@@ -146,6 +159,7 @@
         progress: { ...defaultState.progress, ...(saved.progress || {}) },
         wrong: { ...defaultState.wrong, ...(saved.wrong || {}) },
         favorites: { ...defaultState.favorites, ...(saved.favorites || {}) },
+        favoriteSync: { ...defaultState.favoriteSync, ...(saved.favoriteSync || {}) },
         notes: { ...defaultState.notes, ...(saved.notes || {}) },
         examExposure: { ...defaultState.examExposure, ...(saved.examExposure || {}) },
         optionOrders: { ...defaultState.optionOrders, ...(saved.optionOrders || {}) },
@@ -171,45 +185,49 @@
       examStartMenuOpen: false
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    if (REMOTE_SYNC_ENABLED && remoteSyncReady && remoteSyncStaffId === state.staffId) {
+    if (
+      PROTECTED_CLOUD_SYNC_ENABLED
+      && protectedSyncDirty
+      && remoteSyncReady
+      && remoteSyncStaffId === state.staffId
+    ) {
       scheduleRemoteStateSave();
     }
   }
 
   async function initializeRemoteState() {
-    if (!REMOTE_SYNC_ENABLED) return;
+    if (!PROTECTED_CLOUD_SYNC_ENABLED) return;
     if (!isVerifiedStaffId(state.staffId)) return;
     const staffId = state.staffId;
     remoteSyncReady = false;
     remoteSyncStaffId = staffId;
+    ensureFavoriteSyncRecords();
     try {
-      const response = await fetch(`/api/progress?staffId=${encodeURIComponent(staffId)}`, {
-        cache: "no-store"
-      });
-      if (response.ok) {
-        const payload = await response.json();
-        if (state.staffId !== staffId) return;
-        mergeRemoteState(payload);
-        sanitizeState();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        render();
-      }
+      const payload = await readProtectedCloudState(staffId);
+      if (state.staffId !== staffId) return;
+      mergeRemoteState(payload);
+      sanitizeState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      render();
     } catch {
-      // Local progress remains authoritative when the computer is unreachable.
+      // The local protected records stay available when cloud storage is unreachable.
     } finally {
       if (state.staffId === staffId) {
         remoteSyncReady = true;
+        markProtectedSyncDirty();
         scheduleRemoteStateSave();
       }
     }
   }
 
   function mergeRemoteState(payload = {}) {
-    state.progress = mergeProgressRecords(state.progress, payload.progress || {});
     state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
-    state.favorites = { ...(payload.favorites || {}), ...state.favorites };
-    state.notes = { ...(payload.notes || {}), ...state.notes };
-    state.examExposure = mergeMaxNumberMap(state.examExposure, payload.examExposure || {});
+    state.favoriteSync = mergeFavoriteSyncRecords(
+      state.favoriteSync,
+      payload.favoriteSync || {},
+      payload.favorites || {}
+    );
+    materializeFavoritesFromSync();
   }
 
   function scheduleRemoteStateSave() {
@@ -221,27 +239,132 @@
   async function saveRemoteState() {
     remoteSyncTimer = null;
     const staffId = state.staffId;
-    if (!remoteSyncReady || !isVerifiedStaffId(staffId) || remoteSyncStaffId !== staffId) return;
-    const payload = {
-      version: 1,
-      staffId,
-      updatedAt: new Date().toISOString(),
-      progress: state.progress,
-      wrong: state.wrong,
-      favorites: state.favorites,
-      notes: state.notes,
-      examExposure: state.examExposure
-    };
+    if (
+      !protectedSyncDirty
+      || !remoteSyncReady
+      || !isVerifiedStaffId(staffId)
+      || remoteSyncStaffId !== staffId
+    ) return;
+    const revision = protectedSyncRevision;
     try {
-      await fetch(`/api/progress?staffId=${encodeURIComponent(staffId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        keepalive: true
+      const beforeMerge = JSON.stringify({
+        favorites: state.favorites,
+        wrong: state.wrong
       });
+      const cloudPayload = await readProtectedCloudState(staffId);
+      if (state.staffId !== staffId) return;
+      mergeRemoteState(cloudPayload);
+      const payload = buildProtectedCloudPayload();
+      await writeProtectedCloudState(staffId, payload);
+      if (state.staffId === staffId) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        if (revision === protectedSyncRevision) protectedSyncDirty = false;
+        const afterMerge = JSON.stringify({
+          favorites: state.favorites,
+          wrong: state.wrong
+        });
+        if (beforeMerge !== afterMerge) render();
+        if (protectedSyncDirty) scheduleRemoteStateSave();
+      }
     } catch {
-      // The next local change retries the backup automatically.
+      if (state.staffId === staffId && protectedSyncDirty && !remoteSyncTimer) {
+        remoteSyncTimer = setTimeout(saveRemoteState, 10000);
+      }
     }
+  }
+
+  function markProtectedSyncDirty() {
+    protectedSyncDirty = true;
+    protectedSyncRevision += 1;
+  }
+
+  function buildProtectedCloudPayload() {
+    ensureFavoriteSyncRecords();
+    return {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      favorites: state.favorites,
+      favoriteSync: state.favoriteSync,
+      wrong: state.wrong
+    };
+  }
+
+  async function readProtectedCloudState(staffId) {
+    const token = await getProtectedCloudToken(staffId);
+    const response = await fetch(`https://prefs.us/read/?${encodeURIComponent(PROTECTED_CLOUD_DATA_KEY)}`, {
+      cache: "no-store",
+      headers: protectedCloudHeaders(token)
+    });
+    if (!response.ok) return {};
+    const envelope = await response.json();
+    if (!envelope?.success || envelope.value === undefined || envelope.value === null) return {};
+    if (typeof envelope.value === "object") return envelope.value;
+    try {
+      return JSON.parse(String(envelope.value || "{}"));
+    } catch {
+      return {};
+    }
+  }
+
+  async function writeProtectedCloudState(staffId, payload) {
+    const token = await getProtectedCloudToken(staffId, true);
+    const response = await fetch(
+      `https://prefs.us/write/?&${encodeURIComponent(PROTECTED_CLOUD_DATA_KEY)}=`,
+      {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          ...protectedCloudHeaders(token),
+          "Content-Type": "text/plain"
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+    if (!response.ok) throw new Error("protected_cloud_write_failed");
+    const result = await response.json();
+    if (!result?.success) throw new Error("protected_cloud_write_rejected");
+  }
+
+  async function getProtectedCloudToken(staffId, forceRefresh = false) {
+    const reusable = !forceRefresh
+      && remoteSyncToken
+      && remoteSyncTokenStaffId === staffId
+      && Date.now() < remoteSyncTokenExpiresAt;
+    if (reusable) return remoteSyncToken;
+
+    const seedHash = hashProtectedCloudSeed([staffId, ...PROTECTED_CLOUD_SEED_SALT]);
+    const response = await fetch(
+      `https://prefs.us/getkey/?name=${encodeURIComponent(PROTECTED_CLOUD_KEY_NAME)}&seed=${seedHash}`,
+      {
+        cache: "no-store",
+        headers: { "X-Prefs-Secure": window.location.protocol }
+      }
+    );
+    if (!response.ok) throw new Error("protected_cloud_key_failed");
+    const result = await response.json();
+    if (!result?.success || !result.token) throw new Error("protected_cloud_key_rejected");
+    remoteSyncToken = result.token;
+    remoteSyncTokenStaffId = staffId;
+    remoteSyncTokenExpiresAt = Date.now() + 45000;
+    return remoteSyncToken;
+  }
+
+  function protectedCloudHeaders(token) {
+    return {
+      "X-Authorization": `Token ${token}`,
+      "X-Prefs-Secure": window.location.protocol
+    };
+  }
+
+  function hashProtectedCloudSeed(seed) {
+    return seed.map((part) => {
+      const source = String(part).padStart(8, "0");
+      let hash = 5381;
+      for (let index = 0; index < source.length; index += 1) {
+        hash = (hash * 33) ^ source.charCodeAt(index);
+      }
+      return (hash >>> 0).toString(16);
+    }).join("");
   }
 
   function sanitizeState() {
@@ -273,6 +396,11 @@
     state.specialIndexes = state.specialIndexes && typeof state.specialIndexes === "object"
       ? state.specialIndexes
       : {};
+    state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
+      ? state.favoriteSync
+      : {};
+    ensureFavoriteSyncRecords();
+    materializeFavoritesFromSync();
     pruneWrongRecords();
   }
 
@@ -667,9 +795,10 @@
     const selectedCorrect = Boolean(selected.length && isCorrect(question, selected));
     const favorite = Boolean(state.favorites[question.id]);
     const density = questionDensity(question);
-    const statusBadge = lastCorrect === null || lastCorrect === undefined
-      ? ""
-      : `<span class="badge ${lastCorrect ? "green" : "coral"}">${lastCorrect ? "上次正确" : "上次错误"}</span>`;
+    const hasLastResult = lastCorrect !== null && lastCorrect !== undefined;
+    const statusBadge = hasLastResult
+      ? `<span class="badge question-status ${lastCorrect ? "green" : "coral"}">${lastCorrect ? "上次正确" : "上次错误"}</span>`
+      : '<span class="badge question-status question-status-empty" aria-hidden="true">上次正确</span>';
 
     return `
       <article class="question-card ${revealed ? "revealed" : ""} ${density}">
@@ -684,9 +813,11 @@
               </svg>
             </button>
             <span class="badge blue actual-category-badge">${escapeHtml(shortCategoryName(question.categoryName))}</span>
+          </div>
+          <div class="question-progress-row">
+            <div class="question-index">${index + 1}/${total}</div>
             ${statusBadge}
           </div>
-          <div class="question-index">${index + 1}/${total}</div>
         </div>
         <h2 class="question-text">${renderQuestionText(question, Boolean(state.studyMode && typeSwitcher))}</h2>
         <div class="options">
@@ -1222,7 +1353,7 @@
     }
 
     if (action === "toggle-favorite") {
-      toggleObjectKey(state.favorites, target.dataset.id || state.currentId);
+      toggleFavorite(target.dataset.id || state.currentId);
       saveAndRender();
       return;
     }
@@ -1339,14 +1470,14 @@
     }
 
     if (action === "reset-progress") {
-      if (confirm("清空刷题记录、错题、收藏和笔记？")) {
-        state = {
-          ...defaultState,
-          staffId: state.staffId,
-          selectedCategories: state.selectedCategories,
-          selectedTypes: state.selectedTypes
-        };
-        if (!TYPE_MODE_MAP[state.mode]) state.mode = "single";
+      if (confirm("清空练习进度和模拟记录？收藏、错题、笔记和工号会永久保留。")) {
+        state.progress = {};
+        state.drafts = {};
+        state.revealed = {};
+        state.examExposure = {};
+        state.optionOrders = {};
+        state.specialIndexes = {};
+        state.exam = null;
         state.examStartMenuOpen = false;
         saveAndRender();
         resetViewportScroll();
@@ -1398,6 +1529,9 @@
     state.staffId = value;
     remoteSyncReady = false;
     remoteSyncStaffId = value;
+    remoteSyncToken = "";
+    remoteSyncTokenStaffId = "";
+    remoteSyncTokenExpiresAt = 0;
     restorePracticeLocation();
     saveAndRender();
     window.scrollTo({ top: 0 });
@@ -1485,6 +1619,7 @@
         lastCorrect: true,
         lastAt: new Date().toISOString()
       };
+      markProtectedSyncDirty();
       return;
     }
 
@@ -1495,6 +1630,7 @@
       lastCorrect: false,
       lastAt: new Date().toISOString()
     };
+    markProtectedSyncDirty();
   }
 
   function movePractice(action) {
@@ -1756,6 +1892,83 @@
     return null;
   }
 
+  function normalizeFavoriteSyncRecord(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    return {
+      active: Boolean(raw.active),
+      updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : ""
+    };
+  }
+
+  function ensureFavoriteSyncRecords() {
+    state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
+      ? state.favoriteSync
+      : {};
+    for (const [id, active] of Object.entries(state.favorites || {})) {
+      if (!active || normalizeFavoriteSyncRecord(state.favoriteSync[id])) continue;
+      state.favoriteSync[id] = {
+        active: true,
+        updatedAt: ""
+      };
+    }
+  }
+
+  function materializeFavoritesFromSync() {
+    const favorites = {};
+    for (const [id, raw] of Object.entries(state.favoriteSync || {})) {
+      const record = normalizeFavoriteSyncRecord(raw);
+      if (record?.active) favorites[id] = true;
+    }
+    state.favorites = favorites;
+  }
+
+  function mergeFavoriteSyncRecords(current = {}, incoming = {}, legacyIncoming = {}) {
+    const left = {};
+    const right = {};
+    for (const [id, raw] of Object.entries(current || {})) {
+      const record = normalizeFavoriteSyncRecord(raw);
+      if (record) left[id] = record;
+    }
+    for (const [id, raw] of Object.entries(incoming || {})) {
+      const record = normalizeFavoriteSyncRecord(raw);
+      if (record) right[id] = record;
+    }
+    for (const [id, active] of Object.entries(legacyIncoming || {})) {
+      if (active && !right[id]) right[id] = { active: true, updatedAt: "" };
+    }
+
+    const merged = {};
+    const ids = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const id of ids) {
+      const local = left[id];
+      const remote = right[id];
+      if (!local) {
+        merged[id] = remote;
+        continue;
+      }
+      if (!remote) {
+        merged[id] = local;
+        continue;
+      }
+
+      const localAt = Date.parse(local.updatedAt || "") || 0;
+      const remoteAt = Date.parse(remote.updatedAt || "") || 0;
+      if (localAt !== remoteAt) {
+        merged[id] = localAt > remoteAt ? local : remote;
+      } else if (!localAt) {
+        merged[id] = {
+          active: local.active || remote.active,
+          updatedAt: ""
+        };
+      } else {
+        merged[id] = local.active === remote.active
+          ? local
+          : { active: false, updatedAt: local.updatedAt || remote.updatedAt };
+      }
+    }
+    return merged;
+  }
+
   function isActiveWrong(id) {
     const entry = wrongEntry(id);
     return Boolean(entry && entry.correctStreak < 2 && questionById.has(id));
@@ -1822,6 +2035,7 @@
 
   function markWrongReviewExposure(ids) {
     const now = new Date().toISOString();
+    let changed = false;
     for (const id of ids) {
       const entry = wrongEntry(id);
       if (!entry) continue;
@@ -1830,7 +2044,9 @@
         reviewCount: (entry.reviewCount || 0) + 1,
         lastReviewAt: now
       };
+      changed = true;
     }
+    if (changed) markProtectedSyncDirty();
   }
 
   function spreadPriorityIds(priorityIds, allIds) {
@@ -2112,9 +2328,15 @@
         const payload = JSON.parse(String(reader.result || "{}"));
         state.progress = mergeProgressRecords(state.progress, payload.progress || {});
         state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
-        state.favorites = { ...state.favorites, ...(payload.favorites || {}) };
+        const importedAt = new Date().toISOString();
+        for (const [id, active] of Object.entries(payload.favorites || {})) {
+          if (!active) continue;
+          state.favoriteSync[id] = { active: true, updatedAt: importedAt };
+        }
+        materializeFavoritesFromSync();
         state.notes = { ...state.notes, ...(payload.notes || {}) };
         state.examExposure = mergeMaxNumberMap(state.examExposure, payload.examExposure || {});
+        markProtectedSyncDirty();
         saveAndRender();
       } catch {
         alert("进度文件读取失败");
@@ -2161,13 +2383,24 @@
       }
       const incomingAt = Date.parse(incomingEntry.lastAt || "") || 0;
       const previousAt = Date.parse(previous.lastAt || "") || 0;
+      let latest = previous;
+      if (incomingAt > previousAt) {
+        latest = incomingEntry;
+      } else if (incomingAt === previousAt && incomingAt > 0) {
+        latest = incomingEntry.wrongCount >= previous.wrongCount ? incomingEntry : previous;
+      }
+      const latestReviewAt = [previous.lastReviewAt, incomingEntry.lastReviewAt]
+        .filter(Boolean)
+        .sort((left, right) => (Date.parse(right) || 0) - (Date.parse(left) || 0))[0] || "";
       merged[id] = {
-        correctStreak: Math.min(previous.correctStreak || 0, incomingEntry.correctStreak || 0),
+        correctStreak: incomingAt || previousAt
+          ? latest.correctStreak || 0
+          : Math.min(previous.correctStreak || 0, incomingEntry.correctStreak || 0),
         wrongCount: Math.max(previous.wrongCount || 0, incomingEntry.wrongCount || 0),
         reviewCount: Math.max(previous.reviewCount || 0, incomingEntry.reviewCount || 0),
-        lastCorrect: incomingAt >= previousAt ? incomingEntry.lastCorrect : previous.lastCorrect,
-        lastAt: incomingAt >= previousAt ? incomingEntry.lastAt : previous.lastAt,
-        lastReviewAt: incomingEntry.lastReviewAt || previous.lastReviewAt || ""
+        lastCorrect: Boolean(latest.lastCorrect),
+        lastAt: latest.lastAt || "",
+        lastReviewAt: latestReviewAt
       };
     }
     return merged;
@@ -2355,6 +2588,17 @@
     } else {
       object[key] = true;
     }
+  }
+
+  function toggleFavorite(id) {
+    if (!id) return;
+    const active = !Boolean(state.favorites[id]);
+    state.favoriteSync[id] = {
+      active,
+      updatedAt: new Date().toISOString()
+    };
+    materializeFavoritesFromSync();
+    markProtectedSyncDirty();
   }
 
   function shuffle(items) {
