@@ -5581,3 +5581,24 @@ body.practice-fit .question-progress-row .question-status-empty {
     grid-template-columns: 1fr;
   }
 }
+
+/* Left-hand thumb layout: previous/next first, action buttons after them. */
+.practice-dock .practice-toolbar,
+body.practice-fit .practice-dock .practice-toolbar {
+  grid-template-columns: 132px minmax(0, 1fr);
+}
+
+@media (max-width: 380px) {
+  .practice-dock .practice-toolbar,
+  body.practice-fit .practice-dock .practice-toolbar {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+}
+
+.suite-report-header,
+.suite-report-header .toolbar-group,
+.suite-report-header button {
+  position: relative;
+  z-index: 6;
+  pointer-events: auto;
+}

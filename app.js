@@ -65,7 +65,7 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-	  const ASSET_VERSION = "20260707_2130_suite_original_options";
+	  const ASSET_VERSION = "20260708_2335_suite_review_nav_left";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -797,15 +797,15 @@
     return `
       <div class="practice-dock">
         <div class="toolbar practice-toolbar">
+          <div class="dock-step-group">
+            <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+            <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
+          </div>
           <div class="dock-action-group">
             <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
             <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
             <button class="soft-button" data-action="random-question" ${disabledNavigation ? "disabled" : ""}>随机</button>
             <button class="solid-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
-          </div>
-          <div class="dock-step-group">
-            <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
-            <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
           </div>
         </div>
         <div class="dock-nav-row">
@@ -1059,15 +1059,15 @@
 	    return `
 	      <div class="practice-dock suite-dock">
 	        <div class="toolbar practice-toolbar">
+	          <div class="dock-step-group">
+	            <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+	            <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
+	          </div>
 	          <div class="dock-action-group">
 	            <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
 	            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
 	            <button class="solid-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
 	            <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
-	          </div>
-	          <div class="dock-step-group">
-	            <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
-	            <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
 	          </div>
 	        </div>
 	        <div class="dock-nav-row">
@@ -1094,9 +1094,9 @@
 	            <p>${escapeHtml(attempt.kind === "wrong" ? "错题重做" : "整卷练习")} · ${formatPoints(attempt.score.points)}/${SUITE_TOTAL_POINTS} 分 · 错 ${attempt.wrongIds.length} 题</p>
 	          </div>
 	          <div class="toolbar-group">
-	            <button class="soft-button" data-action="suite-home">套题首页</button>
-	            ${!suite.reviewWrongOnly && attempt.wrongIds.length ? '<button class="soft-button" data-action="suite-review-wrong">只看错题</button>' : ""}
-	            ${suite.reviewWrongOnly ? '<button class="soft-button" data-action="suite-review-all">全部题目</button>' : ""}
+	            <button class="soft-button" type="button" data-action="suite-home">套题首页</button>
+	            ${!suite.reviewWrongOnly && attempt.wrongIds.length ? `<button class="soft-button" type="button" data-action="suite-review-wrong" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">只看错题</button>` : ""}
+	            ${suite.reviewWrongOnly ? `<button class="soft-button" type="button" data-action="suite-review-all" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">全部题目</button>` : ""}
 	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
 	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${attempt.wrongIds.length ? "" : "disabled"}>错题重做</button>
 	            <button class="solid-button" data-action="start-suite-paper">新套</button>
@@ -1457,9 +1457,9 @@
   }
 
   function onClick(event) {
-    let el = event.target;
-    if (el.nodeType === 3) el = el.parentElement;
-    const target = el.closest("[data-action]");
+    let clickTarget = event.target;
+    if (clickTarget && clickTarget.nodeType === 3) clickTarget = clickTarget.parentElement;
+    const target = clickTarget?.closest?.("[data-action]");
     if (!target) return;
     const action = target.dataset.action;
 
@@ -1695,14 +1695,14 @@
 	    }
 
 	    if (action === "suite-review-wrong") {
-	      if (state.suite) state.suite.reviewWrongOnly = true;
+	      setSuiteReviewMode(target, true);
 	      saveAndRender();
 	      resetViewportScroll();
 	      return;
 	    }
 
 	    if (action === "suite-review-all") {
-	      if (state.suite) state.suite.reviewWrongOnly = false;
+	      setSuiteReviewMode(target, false);
 	      saveAndRender();
 	      resetViewportScroll();
 	      return;
@@ -2361,6 +2361,25 @@
 	  function suiteAttemptById(paperId, runId) {
 	    const paper = suitePaperById(paperId);
 	    return (paper?.attempts || []).find((attempt) => attempt.runId === runId) || null;
+	  }
+
+	  function setSuiteReviewMode(target, reviewWrongOnly) {
+	    const currentPaper = state.suite ? suitePaperById(state.suite.paperId) : null;
+	    const fallbackPaperId = target?.dataset?.paperId || currentPaper?.id || "";
+	    const fallbackPaper = suitePaperById(fallbackPaperId);
+	    const fallbackRunId = target?.dataset?.runId || state.suite?.runId || latestSuiteAttempt(fallbackPaper)?.runId || "";
+	    if (!fallbackPaper || !fallbackRunId) return;
+	    state.mode = "suite";
+	    state.examStartMenuOpen = false;
+	    state.utilityPanel = "";
+	    state.categoryMenuOpen = false;
+	    state.suite = {
+	      active: true,
+	      paperId: fallbackPaper.id,
+	      runId: fallbackRunId,
+	      submitted: true,
+	      reviewWrongOnly
+	    };
 	  }
 
 	  function latestSuiteAttempt(paper) {
