@@ -26,16 +26,17 @@
     "多选": "multiple",
     "判断": "judge"
   };
-  const MODES = [
-    ["single", "单选"],
-    ["multiple", "多选"],
-    ["judge", "判断"],
-    ["wrong", "错题"],
-    ["favorite", "收藏"],
-    ["judgeCorrect", "判断正确"],
-    ["allSelect", "全选"],
-    ["exam300", "模拟考试"]
-  ];
+	  const MODES = [
+	    ["single", "单选"],
+	    ["multiple", "多选"],
+	    ["judge", "判断"],
+	    ["wrong", "错题"],
+	    ["favorite", "收藏"],
+	    ["judgeCorrect", "判断正确"],
+	    ["allSelect", "全选"],
+	    ["suite", "套题练习"],
+	    ["exam300", "模拟考试"]
+	  ];
   const HEADER_TYPE_MODES = MODES.filter(([mode]) => TYPE_MODE_MAP[mode]);
   const DOCK_MODES = MODES.filter(([mode]) => !TYPE_MODE_MAP[mode]);
   const VALID_MODES = [...MODES, ["search", "搜题"]];
@@ -46,8 +47,17 @@
     multiple: "模拟多选",
     judge: "模拟判断"
   };
-  const EXAM_DURATION_MS = 60 * 60 * 1000;
-  const SPECIAL_REVIEW_MODES = ["judgeCorrect", "allSelect"];
+	  const EXAM_DURATION_MS = 60 * 60 * 1000;
+	  const WRONG_MASTERY_TARGET = 5;
+	  const SUITE_RULE = {
+	    single: { type: "单选", count: 90, points: 0.5 },
+	    multiple: { type: "多选", count: 45, points: 1 },
+	    judge: { type: "判断", count: 20, points: 0.5 }
+	  };
+	  const SUITE_TYPES = Object.keys(SUITE_RULE);
+	  const SUITE_TOTAL_QUESTIONS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count, 0);
+	  const SUITE_TOTAL_POINTS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count * SUITE_RULE[key].points, 0);
+	  const SPECIAL_REVIEW_MODES = ["judgeCorrect", "allSelect"];
   const FULL_TYPE_COUNTS = {
     single: 1204,
     multiple: 965,
@@ -55,7 +65,7 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-  const ASSET_VERSION = "20260630_1320_protected_cloud_sync";
+	  const ASSET_VERSION = "20260707_2130_suite_original_options";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -96,30 +106,34 @@
     currentId: questions[0] ? questions[0].id : "",
     drafts: {},
     revealed: {},
-    progress: {},
-    wrong: {},
-    favorites: {},
-    favoriteSync: {},
-    notes: {},
-    examExposure: {},
-    optionOrders: {},
-    utilityPanel: "",
+	    progress: {},
+	    wrong: {},
+	    favorites: {},
+	    favoriteSync: {},
+	    mastery: {},
+	    notes: {},
+	    examExposure: {},
+	    suiteExposure: {},
+	    optionOrders: {},
+	    utilityPanel: "",
     categoryMenuOpen: false,
     examStartMenuOpen: false,
     studyMode: false,
     specialIndexes: {},
     examSize: 50,
-    lastPracticeMode: "single",
-    lastPracticeId: questions[0] ? questions[0].id : "",
-    exam: null
-  };
+	    lastPracticeMode: "single",
+	    lastPracticeId: questions[0] ? questions[0].id : "",
+	    exam: null,
+	    suitePapers: [],
+	    suite: null
+	  };
 
   let state = loadState();
   sanitizeState();
-  if (isVerifiedStaffId(state.staffId)) {
-    restorePracticeLocation();
-    sanitizeState();
-  }
+	  if (isVerifiedStaffId(state.staffId) && !(state.mode === "suite" && state.suite?.active)) {
+	    restorePracticeLocation();
+	    sanitizeState();
+	  }
 
   app.addEventListener("click", onClick);
   app.addEventListener("input", onInput);
@@ -156,21 +170,25 @@
         ...saved,
         drafts: { ...defaultState.drafts, ...(saved.drafts || {}) },
         revealed: { ...defaultState.revealed, ...(saved.revealed || {}) },
-        progress: { ...defaultState.progress, ...(saved.progress || {}) },
-        wrong: { ...defaultState.wrong, ...(saved.wrong || {}) },
-        favorites: { ...defaultState.favorites, ...(saved.favorites || {}) },
-        favoriteSync: { ...defaultState.favoriteSync, ...(saved.favoriteSync || {}) },
-        notes: { ...defaultState.notes, ...(saved.notes || {}) },
-        examExposure: { ...defaultState.examExposure, ...(saved.examExposure || {}) },
-        optionOrders: { ...defaultState.optionOrders, ...(saved.optionOrders || {}) },
-        specialIndexes: { ...defaultState.specialIndexes, ...(saved.specialIndexes || {}) },
-        utilityPanel: defaultState.utilityPanel,
-        categoryMenuOpen: false,
-        examStartMenuOpen: false,
-        studyMode: Boolean(saved.studyMode),
-        lastPracticeMode: saved.lastPracticeMode || defaultState.lastPracticeMode,
-        lastPracticeId: saved.lastPracticeId || defaultState.lastPracticeId
-      };
+	        progress: { ...defaultState.progress, ...(saved.progress || {}) },
+	        wrong: { ...defaultState.wrong, ...(saved.wrong || {}) },
+	        favorites: { ...defaultState.favorites, ...(saved.favorites || {}) },
+	        favoriteSync: { ...defaultState.favoriteSync, ...(saved.favoriteSync || {}) },
+	        mastery: { ...defaultState.mastery, ...(saved.mastery || {}) },
+	        notes: { ...defaultState.notes, ...(saved.notes || {}) },
+	        examExposure: { ...defaultState.examExposure, ...(saved.examExposure || {}) },
+	        suiteExposure: { ...defaultState.suiteExposure, ...(saved.suiteExposure || {}) },
+	        optionOrders: { ...defaultState.optionOrders, ...(saved.optionOrders || {}) },
+	        specialIndexes: { ...defaultState.specialIndexes, ...(saved.specialIndexes || {}) },
+	        utilityPanel: defaultState.utilityPanel,
+	        categoryMenuOpen: false,
+	        examStartMenuOpen: false,
+	        studyMode: Boolean(saved.studyMode),
+	        lastPracticeMode: saved.lastPracticeMode || defaultState.lastPracticeMode,
+	        lastPracticeId: saved.lastPracticeId || defaultState.lastPracticeId,
+	        suitePapers: Array.isArray(saved.suitePapers) ? saved.suitePapers : [],
+	        suite: saved.suite || null
+	      };
     } catch {
       return { ...defaultState };
     }
@@ -220,11 +238,12 @@
     }
   }
 
-  function mergeRemoteState(payload = {}) {
-    state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
-    state.favoriteSync = mergeFavoriteSyncRecords(
-      state.favoriteSync,
-      payload.favoriteSync || {},
+	  function mergeRemoteState(payload = {}) {
+	    state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
+	    state.mastery = mergeMasteryRecords(state.mastery, payload.mastery || {});
+	    state.favoriteSync = mergeFavoriteSyncRecords(
+	      state.favoriteSync,
+	      payload.favoriteSync || {},
       payload.favorites || {}
     );
     materializeFavoritesFromSync();
@@ -281,13 +300,14 @@
   function buildProtectedCloudPayload() {
     ensureFavoriteSyncRecords();
     return {
-      version: 2,
-      updatedAt: new Date().toISOString(),
-      favorites: state.favorites,
-      favoriteSync: state.favoriteSync,
-      wrong: state.wrong
-    };
-  }
+	      version: 2,
+	      updatedAt: new Date().toISOString(),
+	      favorites: state.favorites,
+	      favoriteSync: state.favoriteSync,
+	      wrong: state.wrong,
+	      mastery: state.mastery
+	    };
+	  }
 
   async function readProtectedCloudState(staffId) {
     const token = await getProtectedCloudToken(staffId);
@@ -380,7 +400,7 @@
     if (state.mode === "practice") state.mode = "single";
     if (state.mode === "exam") state.mode = "exam300";
     if (state.mode === "memory") state.mode = "single";
-    if (!VALID_MODES.some(([mode]) => mode === state.mode)) state.mode = "single";
+	    if (!VALID_MODES.some(([mode]) => mode === state.mode)) state.mode = "single";
     if (!["", "note", "stats", "filter", "progress", "bank"].includes(state.utilityPanel)) {
       state.utilityPanel = "";
     }
@@ -393,12 +413,20 @@
       state.currentId = questions[0].id;
     }
     state.examSize = clamp(Number(state.examSize) || 50, 1, Math.max(1, questions.length));
-    state.specialIndexes = state.specialIndexes && typeof state.specialIndexes === "object"
-      ? state.specialIndexes
-      : {};
-    state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
-      ? state.favoriteSync
-      : {};
+	    state.specialIndexes = state.specialIndexes && typeof state.specialIndexes === "object"
+	      ? state.specialIndexes
+	      : {};
+	    state.mastery = state.mastery && typeof state.mastery === "object"
+	      ? state.mastery
+	      : {};
+	    state.suiteExposure = state.suiteExposure && typeof state.suiteExposure === "object"
+	      ? state.suiteExposure
+	      : {};
+	    state.suitePapers = normalizeSuitePapers(state.suitePapers);
+	    state.suite = normalizeSuiteSession(state.suite);
+	    state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
+	      ? state.favoriteSync
+	      : {};
     ensureFavoriteSyncRecords();
     materializeFavoritesFromSync();
     pruneWrongRecords();
@@ -414,11 +442,11 @@
 
     const base = getBaseFilteredQuestions();
     const modeQuestions = getModeQuestions(state.mode, base);
-    if (!["exam300", "search"].includes(state.mode)) {
-      ensureCurrent(modeQuestions);
-    }
+	    if (!["exam300", "suite", "search"].includes(state.mode)) {
+	      ensureCurrent(modeQuestions);
+	    }
 
-    const compact = !["exam300", "search"].includes(state.mode);
+	    const compact = !["exam300", "search"].includes(state.mode);
     document.body.classList.toggle("practice-fit", compact);
     document.body.classList.toggle("utility-open", Boolean(state.utilityPanel));
 
@@ -601,9 +629,10 @@
   }
 
   function renderModeContent(baseQuestions, modeQuestions) {
-    if (bank.isStarter) return renderFullBankLoading(state.mode);
-    if (state.mode === "exam300") return `${renderExam300()}${renderModeTabs()}`;
-    if (state.mode === "search") return `${renderSearch(baseQuestions)}${renderModeTabs()}`;
+	    if (bank.isStarter) return renderFullBankLoading(state.mode);
+	    if (state.mode === "suite") return renderSuitePractice();
+	    if (state.mode === "exam300") return `${renderExam300()}${renderModeTabs()}`;
+	    if (state.mode === "search") return `${renderSearch(baseQuestions)}${renderModeTabs()}`;
     return renderPractice(modeQuestions);
   }
 
@@ -614,8 +643,9 @@
       multiple: `完整题库加载后进入多选 ${FULL_TYPE_COUNTS.multiple} 题。`,
       judge: `完整题库加载后进入判断 ${FULL_TYPE_COUNTS.judge} 题。`,
       judgeCorrect: `这个模块只放判断答案为正确 ${FULL_JUDGE_CORRECT_COUNT} 题。`,
-      allSelect: `这个模块只放多选全选 ${FULL_ALL_SELECT_COUNT} 题。`,
-      exam300: "完整题库加载后再开始模拟考试。",
+	      allSelect: `这个模块只放多选全选 ${FULL_ALL_SELECT_COUNT} 题。`,
+	      suite: "完整题库加载后再生成套题练习。",
+	      exam300: "完整题库加载后再开始模拟考试。",
       wrong: "完整题库加载后再查看错题。",
       favorite: "完整题库加载后再查看收藏。",
       search: "完整题库加载后再搜题。"
@@ -891,16 +921,242 @@
     return optionKeys.length > 1 && answerKeys.length === optionKeys.length && optionKeys.every((key, index) => key === answerKeys[index]);
   }
 
-  function isJudgeCorrectAnswer(question) {
-    if (question.type !== "判断") return false;
-    const answerKey = question.answer[0];
-    const option = (question.options || []).find((item) => item.key === answerKey);
-    return option?.text === "正确" || answerKey === "正确" || answerKey === "对";
-  }
+	  function isJudgeCorrectAnswer(question) {
+	    if (question.type !== "判断") return false;
+	    const answerKey = question.answer[0];
+	    const option = (question.options || []).find((item) => item.key === answerKey);
+	    return option?.text === "正确" || answerKey === "正确" || answerKey === "对";
+	  }
 
-  function normalizeAnswerKeys(values) {
-    return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))].sort(sortByOption);
-  }
+	  function renderSuitePractice() {
+	    const suite = state.suite && state.suite.active ? state.suite : null;
+	    if (suite?.submitted) return renderSuiteReport(suite);
+	    if (suite) return renderSuiteRun(suite);
+	    return renderSuiteHome();
+	  }
+
+	  function renderSuiteHome() {
+	    const counts = typeCounts(uniqueQuestions(questions));
+	    const ready = SUITE_TYPES.every((key) => counts[SUITE_RULE[key].type] >= SUITE_RULE[key].count);
+	    const papers = [...state.suitePapers].sort((left, right) => (right.number || 0) - (left.number || 0));
+	    const stats = suiteStats();
+	    const latest = papers.slice(0, 8);
+
+	    return `
+	      <section class="practice-screen suite-screen">
+	        <div class="practice-study-area suite-home-area">
+	          <section class="suite-home-card">
+	            <div class="suite-home-top">
+	              <div>
+	                <span class="badge blue">套题练习</span>
+	                <h2>按真实考试题量刷一套</h2>
+	                <p>单选 90 题、多选 45 题、判断 20 题，共 ${SUITE_TOTAL_POINTS} 分。优先抽错题和收藏，不够再补普通题。</p>
+	              </div>
+	              <button class="solid-button" data-action="start-suite-paper" ${ready ? "" : "disabled"}>生成新套</button>
+	            </div>
+	            <div class="suite-rule-grid">
+	              <div><strong>90</strong><span>单选 · 45 分</span></div>
+	              <div><strong>45</strong><span>多选 · 45 分</span></div>
+	              <div><strong>20</strong><span>判断 · 10 分</span></div>
+	            </div>
+	            ${ready ? "" : `<p class="footer-note">当前完整题库数量不足，无法按考试题量生成套题。</p>`}
+	          </section>
+	          <section class="suite-home-card suite-stats-card">
+	            <div class="suite-rule-grid">
+	              <div><strong>${stats.paperCount}</strong><span>已存套题</span></div>
+	              <div><strong>${stats.priorityCount}</strong><span>错题/收藏待复练</span></div>
+	              <div><strong>${stats.covered}</strong><span>套题覆盖题数</span></div>
+	            </div>
+	          </section>
+	          <section class="suite-paper-list">
+	            ${latest.length ? latest.map(renderSuitePaperCard).join("") : renderEmpty("还没有套题", "点生成新套，会保存为套题（一），以后可以反复重做。")}
+	          </section>
+	        </div>
+	        ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	      </section>
+	    `;
+	  }
+
+	  function renderSuitePaperCard(paper) {
+	    const latest = latestSuiteAttempt(paper);
+	    const score = latest?.score;
+	    const wrongCount = latest?.wrongIds?.length || 0;
+	    const scoreText = score ? `${formatPoints(score.points)}/${SUITE_TOTAL_POINTS} 分` : "未练习";
+	    return `
+	      <article class="suite-paper-card">
+	        <div>
+	          <strong>${escapeHtml(paper.title || suitePaperTitle(paper.number))}</strong>
+	          <span>${formatSuitePaperMeta(paper, latest)}</span>
+	        </div>
+	        <div class="suite-paper-actions">
+	          ${latest ? `<button class="soft-button" data-action="view-suite-report" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(latest.runId)}">${scoreText}</button>` : ""}
+	          <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
+	          <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${wrongCount ? "" : "disabled"}>错题重做</button>
+	        </div>
+	      </article>
+	    `;
+	  }
+
+	  function renderSuiteRun(suite) {
+	    const paper = suitePaperById(suite.paperId);
+	    const ids = getVisibleSuiteIds(suite);
+	    if (!paper || !ids.length) {
+	      return `
+	        <section class="practice-screen suite-screen">
+	          <div class="practice-study-area empty-practice-area">
+	            ${renderEmpty("套题不存在", "回到套题首页重新生成一套。")}
+	          </div>
+	          ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	        </section>
+	      `;
+	    }
+
+	    applyPaperOptionOrders(paper);
+	    if (suite.index >= ids.length) suite.index = 0;
+	    const currentId = ids[suite.index] || ids[0];
+	    const question = questionById.get(currentId);
+	    if (!question) {
+	      return `
+	        <section class="practice-screen suite-screen">
+	          <div class="practice-study-area empty-practice-area">
+	            ${renderEmpty("这道题不在题库里", "完整题库加载后再进入套题。")}
+	          </div>
+	          ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	        </section>
+	      `;
+	    }
+
+	    const selected = suite.answers?.[question.id] || [];
+	    const outcome = suite.outcomes?.[question.id];
+	    const revealed = Boolean(suite.revealed?.[question.id] || outcome || state.studyMode);
+	    const lastCorrect = outcome ? outcome.correct : state.progress[question.id]?.lastCorrect;
+	    const canSubmit = selected.length && !revealed && !state.studyMode;
+
+	    return `
+	      <section class="practice-screen suite-screen">
+	        <div class="practice-study-area">
+	          ${renderSuiteQuestion(question, suite.index, ids.length, selected, revealed, lastCorrect)}
+	        </div>
+	        ${renderSuiteDock({ revealed, canSubmit, studyMode: state.studyMode })}
+	      </section>
+	    `;
+	  }
+
+	  function renderSuiteQuestion(question, index, total, selected, revealed, lastCorrect) {
+	    const html = renderQuestionCard({
+	      question,
+	      index,
+	      total,
+	      selected,
+	      revealed,
+	      lastCorrect,
+	      typeSwitcher: false
+	    });
+	    return html.replaceAll('data-action="option"', 'data-action="suite-option"');
+	  }
+
+	  function renderSuiteDock({ revealed, canSubmit, disabledNavigation = false, studyMode = false }) {
+	    return `
+	      <div class="practice-dock suite-dock">
+	        <div class="toolbar practice-toolbar">
+	          <div class="dock-action-group">
+	            <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
+	            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
+	            <button class="solid-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
+	            <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
+	          </div>
+	          <div class="dock-step-group">
+	            <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+	            <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
+	          </div>
+	        </div>
+	        <div class="dock-nav-row">
+	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
+	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
+	            <span></span><span></span><span></span>
+	          </button>
+	        </div>
+	      </div>
+	    `;
+	  }
+
+	  function renderSuiteReport(suite) {
+	    const paper = suitePaperById(suite.paperId);
+	    const attempt = suiteAttemptById(suite.paperId, suite.runId);
+	    if (!paper || !attempt) return renderSuiteHome();
+	    const ids = suite.reviewWrongOnly ? attempt.wrongIds || [] : attempt.ids || paper.ids || [];
+	    const visibleIds = ids.length ? ids : attempt.ids || paper.ids || [];
+	    return `
+	      <section class="suite-report-screen">
+	        <section class="exam-header exam-review-header suite-report-header">
+	          <div>
+	            <h2>${escapeHtml(paper.title || "套题练习")}</h2>
+	            <p>${escapeHtml(attempt.kind === "wrong" ? "错题重做" : "整卷练习")} · ${formatPoints(attempt.score.points)}/${SUITE_TOTAL_POINTS} 分 · 错 ${attempt.wrongIds.length} 题</p>
+	          </div>
+	          <div class="toolbar-group">
+	            <button class="soft-button" data-action="suite-home">套题首页</button>
+	            ${!suite.reviewWrongOnly && attempt.wrongIds.length ? '<button class="soft-button" data-action="suite-review-wrong">只看错题</button>' : ""}
+	            ${suite.reviewWrongOnly ? '<button class="soft-button" data-action="suite-review-all">全部题目</button>' : ""}
+	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
+	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${attempt.wrongIds.length ? "" : "disabled"}>错题重做</button>
+	            <button class="solid-button" data-action="start-suite-paper">新套</button>
+	          </div>
+	        </section>
+	        ${renderSuiteScore(attempt.score)}
+	        <section class="exam-review-list">
+	          ${visibleIds.map((id) => renderSuiteReviewItem(paper, attempt, id)).join("")}
+	        </section>
+	      </section>
+	      ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	    `;
+	  }
+
+	  function renderSuiteScore(score) {
+	    return `
+	      <section class="result-card suite-score-card">
+	        <div class="result-score">
+	          <div class="score-ring" style="--value: ${score.rate}%">${score.rate}%</div>
+	          <div>
+	            <h2>${formatPoints(score.points)} 分</h2>
+	            <p class="footer-note">单选 ${suiteTypeCorrect(score, "单选")}/90，多选 ${suiteTypeCorrect(score, "多选")}/45，判断 ${suiteTypeCorrect(score, "判断")}/20。</p>
+	          </div>
+	        </div>
+	      </section>
+	    `;
+	  }
+
+	  function renderSuiteReviewItem(paper, attempt, id) {
+	    const question = questionById.get(id);
+	    if (!question) return "";
+	    applyPaperOptionOrders(paper);
+	    const selected = attempt.answers[id] || [];
+	    const correct = isCorrect(question, selected);
+	    const orderIndex = Math.max(0, (attempt.ids || paper.ids || []).indexOf(id));
+	    const presentedOptions = getPresentedOptions(question);
+	    const correctAnswer = formatPresentedAnswer(question, presentedOptions);
+	    const selectedAnswer = formatPresentedSelection(question, selected, presentedOptions);
+	    return `
+	      <article class="exam-review-card ${correct ? "is-correct" : "is-wrong"}">
+	        <div class="exam-review-top">
+	          <div class="badges">
+	            <span class="badge green">${escapeHtml(question.type)}</span>
+	            <span class="badge blue">${escapeHtml(question.categoryName)}</span>
+	            <span class="badge ${correct ? "green" : "coral"}">${correct ? "正确" : "错误"}</span>
+	          </div>
+	          <span class="question-index">${orderIndex + 1}/${attempt.ids.length}</span>
+	        </div>
+	        <h3>${escapeHtml(question.question)}</h3>
+	        <div class="review-answer-row">
+	          <span class="answer-pill correct">正确答案：${escapeHtml(correctAnswer)}</span>
+	          <span class="answer-pill ${correct ? "correct" : "wrong"}">我的答案：${escapeHtml(selectedAnswer)}</span>
+	        </div>
+	      </article>
+	    `;
+	  }
+
+	  function normalizeAnswerKeys(values) {
+	    return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))].sort(sortByOption);
+	  }
 
   function shortCategoryName(value) {
     return String(value || "").replace(/试题$/, "");
@@ -1364,16 +1620,94 @@
       return;
     }
 
-    if (action === "start-exam300") {
-      state.examStartMenuOpen = true;
-      state.utilityPanel = "";
+	    if (action === "start-exam300") {
+	      state.examStartMenuOpen = true;
+	      state.utilityPanel = "";
       state.categoryMenuOpen = false;
       saveAndRender();
-      return;
-    }
+	      return;
+	    }
 
-    if (action === "close-exam-start") {
-      state.examStartMenuOpen = false;
+	    if (action === "start-suite-paper") {
+	      startSuitePaper();
+	      return;
+	    }
+
+	    if (action === "retry-suite-full") {
+	      startSuiteRun(target.dataset.paperId, "full");
+	      return;
+	    }
+
+	    if (action === "retry-suite-wrong") {
+	      startSuiteRun(target.dataset.paperId, "wrong");
+	      return;
+	    }
+
+	    if (action === "view-suite-report") {
+	      state.mode = "suite";
+	      state.suite = {
+	        active: true,
+	        paperId: target.dataset.paperId,
+	        runId: target.dataset.runId,
+	        submitted: true,
+	        reviewWrongOnly: false
+	      };
+	      state.examStartMenuOpen = false;
+	      state.utilityPanel = "";
+	      saveAndRender();
+	      resetViewportScroll();
+	      return;
+	    }
+
+	    if (action === "suite-home") {
+	      state.suite = null;
+	      saveAndRender();
+	      resetViewportScroll();
+	      return;
+	    }
+
+	    if (action === "suite-option") {
+	      updateSuiteAnswer(target.dataset.key);
+	      return;
+	    }
+
+	    if (action === "suite-submit-answer") {
+	      submitSuiteCurrent();
+	      return;
+	    }
+
+	    if (action === "suite-reveal-answer") {
+	      revealSuiteCurrent();
+	      return;
+	    }
+
+	    if (action === "finish-suite") {
+	      finishSuite();
+	      return;
+	    }
+
+	    if (action === "next-suite" || action === "previous-suite" || action === "random-suite") {
+	      moveSuite(action);
+	      resetViewportScroll();
+	      return;
+	    }
+
+	    if (action === "suite-review-wrong") {
+	      if (state.suite) state.suite.reviewWrongOnly = true;
+	      saveAndRender();
+	      resetViewportScroll();
+	      return;
+	    }
+
+	    if (action === "suite-review-all") {
+	      if (state.suite) state.suite.reviewWrongOnly = false;
+	      saveAndRender();
+	      resetViewportScroll();
+	      return;
+	    }
+
+	    if (action === "close-exam-start") {
+	      state.examStartMenuOpen = false;
       saveAndRender();
       return;
     }
@@ -1588,8 +1922,8 @@
     state.revealed[id] = true;
   }
 
-  function recordAttempt(id, selected, correct) {
-    const previous = state.progress[id] || {
+	  function recordAttempt(id, selected, correct) {
+	    const previous = state.progress[id] || {
       attempts: 0,
       correct: 0,
       wrong: 0,
@@ -1604,21 +1938,22 @@
       lastCorrect: correct,
       lastAnswer: selected,
       lastAt: new Date().toISOString()
-    };
-    recordWrongMastery(id, correct);
-  }
+	    };
+	    recordWrongMastery(id, correct);
+	    recordMastery(id, correct);
+	  }
 
   function recordWrongMastery(id, correct) {
     const previous = wrongEntry(id);
     if (correct) {
       if (!previous) return;
-      const nextStreak = (previous.correctStreak || 0) + 1;
-      state.wrong[id] = {
-        ...previous,
-        correctStreak: Math.min(nextStreak, 2),
-        lastCorrect: true,
-        lastAt: new Date().toISOString()
-      };
+	      const nextStreak = (previous.correctStreak || 0) + 1;
+	      state.wrong[id] = {
+	        ...previous,
+	        correctStreak: Math.min(nextStreak, WRONG_MASTERY_TARGET),
+	        lastCorrect: true,
+	        lastAt: new Date().toISOString()
+	      };
       markProtectedSyncDirty();
       return;
     }
@@ -1759,18 +2094,389 @@
     saveAndRender();
   }
 
-  function moveExam(action) {
-    const exam = state.exam;
-    const ids = exam ? getVisibleExamIds(exam) : [];
-    if (!exam || !ids.length) return;
-    const delta = action === "next-exam" ? 1 : -1;
-    exam.index = (exam.index + delta + ids.length) % ids.length;
-    saveAndRender();
-  }
+	  function moveExam(action) {
+	    const exam = state.exam;
+	    const ids = exam ? getVisibleExamIds(exam) : [];
+	    if (!exam || !ids.length) return;
+	    const delta = action === "next-exam" ? 1 : -1;
+	    exam.index = (exam.index + delta + ids.length) % ids.length;
+	    saveAndRender();
+	  }
 
-  function getDraft(id) {
-    return Array.isArray(state.drafts[id]) ? state.drafts[id] : [];
-  }
+	  function startSuitePaper() {
+	    const picked = buildSuiteQuestionIds();
+	    if (!picked) {
+	      alert("完整题库数量不足，暂时无法按真实考试题量生成套题。");
+	      return;
+	    }
+	    const number = nextSuiteNumber();
+	    const id = `suite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	    const paper = {
+	      id,
+	      number,
+	      title: suitePaperTitle(number),
+	      createdAt: new Date().toISOString(),
+	      ids: picked.ids,
+	      priorityIds: picked.priorityIds,
+	      typeCounts: {
+	        "单选": SUITE_RULE.single.count,
+	        "多选": SUITE_RULE.multiple.count,
+	        "判断": SUITE_RULE.judge.count
+	      },
+	      optionOrders: buildOptionOrdersForIds(picked.ids),
+	      attempts: []
+	    };
+	    state.suitePapers.push(paper);
+	    markSuiteExposure(picked.ids);
+	    markWrongReviewExposure(picked.priorityIds);
+	    startSuiteRun(paper.id, "full", { skipSave: true });
+	    saveAndRender();
+	    resetViewportScroll();
+	  }
+
+	  function startSuiteRun(paperId, kind = "full", options = {}) {
+	    const paper = suitePaperById(paperId);
+	    if (!paper) return;
+	    const normalizedKind = kind === "wrong" ? "wrong" : "full";
+	    const latest = latestSuiteAttempt(paper);
+	    const ids = normalizedKind === "wrong"
+	      ? (latest?.wrongIds || []).filter((id) => questionById.has(id))
+	      : (paper.ids || []).filter((id) => questionById.has(id));
+	    if (!ids.length) return;
+	    applyPaperOptionOrders(paper);
+	    state.mode = "suite";
+	    state.exam = null;
+	    state.examStartMenuOpen = false;
+	    state.utilityPanel = "";
+	    state.suite = {
+	      active: true,
+	      paperId: paper.id,
+	      runId: `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+	      kind: normalizedKind,
+	      ids,
+	      index: 0,
+	      answers: {},
+	      revealed: {},
+	      outcomes: {},
+	      submitted: false,
+	      startedAt: Date.now(),
+	      reviewWrongOnly: false
+	    };
+	    if (!options.skipSave) {
+	      saveAndRender();
+	      resetViewportScroll();
+	    }
+	  }
+
+	  function buildSuiteQuestionIds() {
+	    const ids = [];
+	    const priorityIds = [];
+	    for (const key of SUITE_TYPES) {
+	      const rule = SUITE_RULE[key];
+	      const typedQuestions = uniqueQuestions(questions).filter((question) => question.type === rule.type);
+	      if (typedQuestions.length < rule.count) return null;
+	      const picked = pickSuiteTypeQuestions(typedQuestions, rule.count);
+	      if (picked.ids.length !== rule.count) return null;
+	      ids.push(...picked.ids);
+	      priorityIds.push(...picked.priorityIds);
+	    }
+	    return { ids, priorityIds };
+	  }
+
+	  function pickSuiteTypeQuestions(typedQuestions, count) {
+	    const unique = uniqueQuestions(typedQuestions);
+	    const priority = unique.filter((question) => isSuitePriority(question.id));
+	    const pickedPriority = sortSuiteCandidates(priority, true).slice(0, count);
+	    const used = new Set(pickedPriority.map((question) => question.id));
+	    const fill = sortSuiteCandidates(
+	      unique.filter((question) => !used.has(question.id)),
+	      false
+	    ).slice(0, count - pickedPriority.length);
+	    const picked = [...pickedPriority, ...fill];
+	    return {
+	      ids: picked.map((question) => question.id),
+	      priorityIds: pickedPriority.map((question) => question.id)
+	    };
+	  }
+
+	  function sortSuiteCandidates(source, priorityOnly) {
+	    return shuffle(source).sort((left, right) => {
+	      const exposureDelta = (state.suiteExposure[left.id] || 0) - (state.suiteExposure[right.id] || 0);
+	      if (exposureDelta) return exposureDelta;
+	      if (priorityOnly) {
+	        const leftWrong = isActiveWrong(left.id) ? 0 : 1;
+	        const rightWrong = isActiveWrong(right.id) ? 0 : 1;
+	        if (leftWrong !== rightWrong) return leftWrong - rightWrong;
+	        const leftEntry = wrongEntry(left.id) || {};
+	        const rightEntry = wrongEntry(right.id) || {};
+	        const streakDelta = (leftEntry.correctStreak || 0) - (rightEntry.correctStreak || 0);
+	        if (streakDelta) return streakDelta;
+	        const reviewDelta = (leftEntry.reviewCount || 0) - (rightEntry.reviewCount || 0);
+	        if (reviewDelta) return reviewDelta;
+	      }
+	      return 0;
+	    });
+	  }
+
+	  function isSuitePriority(id) {
+	    return isActiveWrong(id) || (Boolean(state.favorites[id]) && !isMastered(id));
+	  }
+
+	  function updateSuiteAnswer(key) {
+	    const suite = state.suite;
+	    if (!suite || suite.submitted) return;
+	    ensureSuiteRunMaps(suite);
+	    const question = currentSuiteQuestion();
+	    if (!question || suite.outcomes?.[question.id]) return;
+	    const answer = suite.answers?.[question.id] || [];
+	    suite.answers[question.id] = updateSelection(question, answer, key);
+	    if (question.type !== "多选") submitSuiteCurrent();
+	    else saveAndRender();
+	  }
+
+	  function submitSuiteCurrent() {
+	    const suite = state.suite;
+	    const question = currentSuiteQuestion();
+	    if (!suite || suite.submitted || !question) return;
+	    ensureSuiteRunMaps(suite);
+	    const selected = suite.answers?.[question.id] || [];
+	    if (!selected.length || suite.outcomes?.[question.id]) return;
+	    const correct = isCorrect(question, selected);
+	    suite.revealed[question.id] = true;
+	    suite.outcomes[question.id] = {
+	      selected,
+	      correct,
+	      effective: true,
+	      at: new Date().toISOString()
+	    };
+	    recordAttempt(question.id, selected, correct);
+	    saveAndRender();
+	  }
+
+	  function revealSuiteCurrent() {
+	    const suite = state.suite;
+	    const question = currentSuiteQuestion();
+	    if (!suite || suite.submitted || !question || suite.outcomes?.[question.id]) return;
+	    ensureSuiteRunMaps(suite);
+	    const selected = suite.answers?.[question.id] || [];
+	    suite.revealed[question.id] = true;
+	    suite.outcomes[question.id] = {
+	      selected,
+	      correct: false,
+	      effective: false,
+	      revealed: true,
+	      at: new Date().toISOString()
+	    };
+	    recordAttempt(question.id, selected, false);
+	    saveAndRender();
+	  }
+
+	  function finishSuite() {
+	    const suite = state.suite;
+	    const paper = suite ? suitePaperById(suite.paperId) : null;
+	    if (!suite || suite.submitted || !paper) return;
+	    ensureSuiteRunMaps(suite);
+	    const ids = getVisibleSuiteIds(suite);
+	    const wrongIds = [];
+	    for (const id of ids) {
+	      const question = questionById.get(id);
+	      if (!question) continue;
+	      const selected = suite.answers?.[id] || [];
+	      const outcome = suite.outcomes?.[id];
+	      if (!outcome) {
+	        suite.outcomes[id] = {
+	          selected,
+	          correct: false,
+	          effective: false,
+	          skipped: true,
+	          at: new Date().toISOString()
+	        };
+	        recordAttempt(id, selected, false);
+	      }
+	      if (!suite.outcomes[id].correct) wrongIds.push(id);
+	    }
+	    const score = suiteScore(ids, suite.answers || {}, suite.outcomes || {});
+	    const attempt = {
+	      runId: suite.runId,
+	      kind: suite.kind || "full",
+	      ids,
+	      answers: suite.answers || {},
+	      revealedIds: Object.keys(suite.revealed || {}),
+	      wrongIds,
+	      score,
+	      startedAt: suite.startedAt || Date.now(),
+	      finishedAt: Date.now()
+	    };
+	    paper.attempts = Array.isArray(paper.attempts) ? paper.attempts : [];
+	    paper.attempts.push(attempt);
+	    state.suite = {
+	      active: true,
+	      paperId: paper.id,
+	      runId: attempt.runId,
+	      submitted: true,
+	      reviewWrongOnly: false
+	    };
+	    saveAndRender();
+	    resetViewportScroll();
+	  }
+
+	  function moveSuite(action) {
+	    const suite = state.suite;
+	    const ids = suite ? getVisibleSuiteIds(suite) : [];
+	    if (!suite || suite.submitted || !ids.length) return;
+	    if (action === "random-suite") {
+	      const candidates = ids.map((_, index) => index).filter((index) => index !== suite.index);
+	      suite.index = candidates[Math.floor(Math.random() * candidates.length)] || 0;
+	    } else {
+	      const delta = action === "previous-suite" ? -1 : 1;
+	      suite.index = (suite.index + delta + ids.length) % ids.length;
+	    }
+	    saveAndRender();
+	  }
+
+	  function currentSuiteQuestion() {
+	    const suite = state.suite;
+	    const ids = suite ? getVisibleSuiteIds(suite) : [];
+	    if (!suite || !ids.length) return null;
+	    return questionById.get(ids[suite.index] || ids[0]) || null;
+	  }
+
+	  function getVisibleSuiteIds(suite) {
+	    if (!suite) return [];
+	    return (suite.ids || []).filter((id) => questionById.has(id));
+	  }
+
+	  function ensureSuiteRunMaps(suite) {
+	    suite.answers = suite.answers && typeof suite.answers === "object" ? suite.answers : {};
+	    suite.revealed = suite.revealed && typeof suite.revealed === "object" ? suite.revealed : {};
+	    suite.outcomes = suite.outcomes && typeof suite.outcomes === "object" ? suite.outcomes : {};
+	  }
+
+	  function suitePaperById(id) {
+	    return (state.suitePapers || []).find((paper) => paper.id === id) || null;
+	  }
+
+	  function suiteAttemptById(paperId, runId) {
+	    const paper = suitePaperById(paperId);
+	    return (paper?.attempts || []).find((attempt) => attempt.runId === runId) || null;
+	  }
+
+	  function latestSuiteAttempt(paper) {
+	    const attempts = Array.isArray(paper?.attempts) ? paper.attempts : [];
+	    return attempts[attempts.length - 1] || null;
+	  }
+
+	  function nextSuiteNumber() {
+	    const numbers = (state.suitePapers || []).map((paper) => Number(paper.number) || 0);
+	    return Math.max(0, ...numbers) + 1;
+	  }
+
+	  function suitePaperTitle(number) {
+	    return `套题（${toChineseNumber(number)}）`;
+	  }
+
+	  function toChineseNumber(value) {
+	    const number = Math.max(1, Math.trunc(Number(value) || 1));
+	    const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+	    if (number <= 10) return number === 10 ? "十" : digits[number];
+	    if (number < 20) return `十${digits[number % 10]}`;
+	    if (number < 100) {
+	      const tens = Math.floor(number / 10);
+	      const ones = number % 10;
+	      return `${digits[tens]}十${ones ? digits[ones] : ""}`;
+	    }
+	    return String(number);
+	  }
+
+	  function suiteStats() {
+	    const priorityIds = uniqueQuestions(questions)
+	      .filter((question) => isSuitePriority(question.id))
+	      .map((question) => question.id);
+	    const covered = Object.values(state.suiteExposure || {}).filter((value) => Number(value) > 0).length;
+	    return {
+	      paperCount: (state.suitePapers || []).length,
+	      priorityCount: priorityIds.length,
+	      covered
+	    };
+	  }
+
+	  function formatSuitePaperMeta(paper, latest) {
+	    const created = paper.createdAt ? new Date(paper.createdAt) : null;
+	    const date = created && !Number.isNaN(created.getTime())
+	      ? `${created.getMonth() + 1}月${created.getDate()}日`
+	      : "已保存";
+	    if (!latest) return `${date} · ${paper.ids?.length || SUITE_TOTAL_QUESTIONS} 题`;
+	    return `${date} · 已练 ${paper.attempts.length} 次 · 错 ${latest.wrongIds?.length || 0} 题`;
+	  }
+
+	  function buildOptionOrdersForIds(ids) {
+	    const orders = {};
+	    for (const id of ids) {
+	      const question = questionById.get(id);
+	      if (!question || !Array.isArray(question.options) || question.options.length <= 1) continue;
+	      orders[id] = question.options.map((option) => option.key);
+	    }
+	    return orders;
+	  }
+
+	  function applyPaperOptionOrders(paper) {
+	    const ids = Array.isArray(paper?.ids) ? paper.ids : [];
+	    for (const id of ids) {
+	      const question = questionById.get(id);
+	      if (!question || !Array.isArray(question.options) || question.options.length <= 1) continue;
+	      state.optionOrders[id] = question.options.map((option) => option.key);
+	    }
+	  }
+
+	  function markSuiteExposure(ids) {
+	    for (const id of ids) {
+	      state.suiteExposure[id] = (state.suiteExposure[id] || 0) + 1;
+	    }
+	  }
+
+	  function suiteScore(ids, answers = {}, outcomes = {}) {
+	    const byType = TYPES.reduce((result, type) => {
+	      result[type] = { total: 0, correct: 0, points: 0 };
+	      return result;
+	    }, {});
+	    let correct = 0;
+	    let points = 0;
+	    for (const id of ids) {
+	      const question = questionById.get(id);
+	      if (!question) continue;
+	      const selected = answers[id] || [];
+	      const outcome = outcomes[id];
+	      const isEffectiveCorrect = outcome ? Boolean(outcome.correct && outcome.effective !== false) : isCorrect(question, selected);
+	      const rule = Object.values(SUITE_RULE).find((item) => item.type === question.type);
+	      byType[question.type].total += 1;
+	      if (isEffectiveCorrect) {
+	        correct += 1;
+	        byType[question.type].correct += 1;
+	        byType[question.type].points += rule?.points || 0;
+	        points += rule?.points || 0;
+	      }
+	    }
+	    return {
+	      total: ids.length,
+	      correct,
+	      points,
+	      rate: SUITE_TOTAL_POINTS ? Math.round((points / SUITE_TOTAL_POINTS) * 100) : 0,
+	      byType
+	    };
+	  }
+
+	  function formatPoints(value) {
+	    const number = Number(value) || 0;
+	    return Number.isInteger(number) ? String(number) : number.toFixed(1);
+	  }
+
+	  function suiteTypeCorrect(score, type) {
+	    return Number(score?.byType?.[type]?.correct) || 0;
+	  }
+
+	  function getDraft(id) {
+	    return Array.isArray(state.drafts[id]) ? state.drafts[id] : [];
+	  }
 
   function updateDraft(id, key) {
     const question = questionById.get(id);
@@ -1868,7 +2574,7 @@
     return normalizeWrongRecord(raw);
   }
 
-  function normalizeWrongRecord(raw) {
+	  function normalizeWrongRecord(raw) {
     if (!raw) return null;
     if (raw === true) {
       return {
@@ -1879,10 +2585,10 @@
         lastAt: ""
       };
     }
-    if (typeof raw === "object") {
-      return {
-        correctStreak: clamp(Number(raw.correctStreak) || 0, 0, 2),
-        wrongCount: Number(raw.wrongCount) || 1,
+	    if (typeof raw === "object") {
+	      return {
+	        correctStreak: clamp(Number(raw.correctStreak) || 0, 0, WRONG_MASTERY_TARGET),
+	        wrongCount: Number(raw.wrongCount) || 1,
         reviewCount: Number(raw.reviewCount) || 0,
         lastCorrect: Boolean(raw.lastCorrect),
         lastAt: raw.lastAt || "",
@@ -1892,13 +2598,46 @@
     return null;
   }
 
-  function normalizeFavoriteSyncRecord(raw) {
+	  function normalizeFavoriteSyncRecord(raw) {
     if (!raw || typeof raw !== "object") return null;
     return {
       active: Boolean(raw.active),
       updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : ""
     };
-  }
+	  }
+
+	  function normalizeMasteryRecord(raw) {
+	    if (!raw || typeof raw !== "object") return null;
+	    return {
+	      correctStreak: clamp(Number(raw.correctStreak) || 0, 0, WRONG_MASTERY_TARGET),
+	      lastCorrect: Boolean(raw.lastCorrect),
+	      lastAt: raw.lastAt || ""
+	    };
+	  }
+
+	  function recordMastery(id, correct) {
+	    if (!id) return;
+	    const previous = normalizeMasteryRecord(state.mastery?.[id]) || {
+	      correctStreak: 0,
+	      lastCorrect: false,
+	      lastAt: ""
+	    };
+	    state.mastery[id] = {
+	      correctStreak: correct ? Math.min((previous.correctStreak || 0) + 1, WRONG_MASTERY_TARGET) : 0,
+	      lastCorrect: Boolean(correct),
+	      lastAt: new Date().toISOString()
+	    };
+	    markProtectedSyncDirty();
+	  }
+
+	  function isMastered(id) {
+	    const mastery = normalizeMasteryRecord(state.mastery?.[id]);
+	    const wrong = wrongEntry(id);
+	    return Boolean(
+	      (mastery && mastery.correctStreak >= WRONG_MASTERY_TARGET) ||
+	      (wrong && wrong.correctStreak >= WRONG_MASTERY_TARGET)
+	    );
+	  }
 
   function ensureFavoriteSyncRecords() {
     state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
@@ -1969,10 +2708,10 @@
     return merged;
   }
 
-  function isActiveWrong(id) {
-    const entry = wrongEntry(id);
-    return Boolean(entry && entry.correctStreak < 2 && questionById.has(id));
-  }
+	  function isActiveWrong(id) {
+	    const entry = wrongEntry(id);
+	    return Boolean(entry && entry.correctStreak < WRONG_MASTERY_TARGET && questionById.has(id));
+	  }
 
   function activeWrongIds() {
     return Object.keys(state.wrong || {}).filter(isActiveWrong);
@@ -2148,13 +2887,14 @@
       return questions.filter((question) => question.type === TYPE_MODE_MAP[mode]).length;
     }
     if (mode === "wrong") return activeWrongIds().length;
-    if (mode === "favorite") {
-      return Object.keys(state.favorites).filter((id) => questionById.has(id)).length;
-    }
-    if (mode === "judgeCorrect") return bank.isStarter ? FULL_JUDGE_CORRECT_COUNT : questions.filter(isJudgeCorrectAnswer).length;
-    if (mode === "allSelect") return bank.isStarter ? FULL_ALL_SELECT_COUNT : questions.filter(isAllSelectAnswer).length;
-    return 0;
-  }
+	    if (mode === "favorite") {
+	      return Object.keys(state.favorites).filter((id) => questionById.has(id)).length;
+	    }
+	    if (mode === "judgeCorrect") return bank.isStarter ? FULL_JUDGE_CORRECT_COUNT : questions.filter(isJudgeCorrectAnswer).length;
+	    if (mode === "allSelect") return bank.isStarter ? FULL_ALL_SELECT_COUNT : questions.filter(isAllSelectAnswer).length;
+	    if (mode === "suite") return (state.suitePapers || []).length;
+	    return 0;
+	  }
 
   function isCorrect(question, selected) {
     if (!question || !Array.isArray(selected)) return false;
@@ -2306,12 +3046,15 @@
       app: "customer-manager-quiz",
       exportedAt: new Date().toISOString(),
       source: bank.source,
-      progress: state.progress,
-      wrong: state.wrong,
-      favorites: state.favorites,
-      notes: state.notes,
-      examExposure: state.examExposure
-    };
+	      progress: state.progress,
+	      wrong: state.wrong,
+	      favorites: state.favorites,
+	      mastery: state.mastery,
+	      notes: state.notes,
+	      examExposure: state.examExposure,
+	      suiteExposure: state.suiteExposure,
+	      suitePapers: state.suitePapers
+	    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -2326,17 +3069,20 @@
     reader.onload = () => {
       try {
         const payload = JSON.parse(String(reader.result || "{}"));
-        state.progress = mergeProgressRecords(state.progress, payload.progress || {});
-        state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
+	        state.progress = mergeProgressRecords(state.progress, payload.progress || {});
+	        state.wrong = mergeWrongRecords(state.wrong, payload.wrong || {});
+	        state.mastery = mergeMasteryRecords(state.mastery, payload.mastery || {});
         const importedAt = new Date().toISOString();
         for (const [id, active] of Object.entries(payload.favorites || {})) {
           if (!active) continue;
           state.favoriteSync[id] = { active: true, updatedAt: importedAt };
         }
         materializeFavoritesFromSync();
-        state.notes = { ...state.notes, ...(payload.notes || {}) };
-        state.examExposure = mergeMaxNumberMap(state.examExposure, payload.examExposure || {});
-        markProtectedSyncDirty();
+	        state.notes = { ...state.notes, ...(payload.notes || {}) };
+	        state.examExposure = mergeMaxNumberMap(state.examExposure, payload.examExposure || {});
+	        state.suiteExposure = mergeMaxNumberMap(state.suiteExposure, payload.suiteExposure || {});
+	        state.suitePapers = mergeSuitePapers(state.suitePapers, payload.suitePapers || []);
+	        markProtectedSyncDirty();
         saveAndRender();
       } catch {
         alert("进度文件读取失败");
@@ -2367,8 +3113,8 @@
     return merged;
   }
 
-  function mergeWrongRecords(current = {}, incoming = {}) {
-    const merged = { ...current };
+	  function mergeWrongRecords(current = {}, incoming = {}) {
+	    const merged = { ...current };
     for (const [id, incomingRaw] of Object.entries(incoming || {})) {
       const previous = normalizeWrongRecord(merged[id]);
       const incomingEntry = normalizeWrongRecord(incomingRaw);
@@ -2403,10 +3149,160 @@
         lastReviewAt: latestReviewAt
       };
     }
-    return merged;
-  }
+	    return merged;
+	  }
 
-  function mergeMaxNumberMap(current = {}, incoming = {}) {
+	  function mergeMasteryRecords(current = {}, incoming = {}) {
+	    const merged = { ...current };
+	    for (const [id, incomingRaw] of Object.entries(incoming || {})) {
+	      const previous = normalizeMasteryRecord(merged[id]);
+	      const incomingRecord = normalizeMasteryRecord(incomingRaw);
+	      if (!incomingRecord && !previous) continue;
+	      if (!previous) {
+	        merged[id] = incomingRecord;
+	        continue;
+	      }
+	      if (!incomingRecord) {
+	        merged[id] = previous;
+	        continue;
+	      }
+	      const incomingAt = Date.parse(incomingRecord.lastAt || "") || 0;
+	      const previousAt = Date.parse(previous.lastAt || "") || 0;
+	      merged[id] = incomingAt >= previousAt ? incomingRecord : previous;
+	    }
+	    return merged;
+	  }
+
+	  function normalizeSuitePapers(raw) {
+	    if (!Array.isArray(raw)) return [];
+	    return raw
+	      .filter((paper) => paper && typeof paper === "object" && Array.isArray(paper.ids))
+	      .map((paper, index) => {
+	        const ids = paper.ids.filter((id) => typeof id === "string");
+	        const attempts = Array.isArray(paper.attempts)
+	          ? paper.attempts
+	              .filter((attempt) => attempt && typeof attempt === "object" && Array.isArray(attempt.ids))
+	              .map((attempt) => ({
+	                runId: String(attempt.runId || `run-${index}-${Date.now()}`),
+	                kind: attempt.kind === "wrong" ? "wrong" : "full",
+	                ids: attempt.ids.filter((id) => typeof id === "string"),
+	                answers: normalizeAnswerMap(attempt.answers),
+	                revealedIds: Array.isArray(attempt.revealedIds) ? attempt.revealedIds.filter((id) => typeof id === "string") : [],
+	                wrongIds: Array.isArray(attempt.wrongIds) ? attempt.wrongIds.filter((id) => typeof id === "string") : [],
+	                score: attempt.score || { total: 0, correct: 0, points: 0, rate: 0, byType: {} },
+	                startedAt: Number(attempt.startedAt) || Date.now(),
+	                finishedAt: Number(attempt.finishedAt) || Date.now()
+	              }))
+	          : [];
+	        return {
+	          id: String(paper.id || `suite-${index + 1}`),
+	          number: Number(paper.number) || index + 1,
+	          title: paper.title || suitePaperTitle(Number(paper.number) || index + 1),
+	          createdAt: paper.createdAt || "",
+	          ids,
+	          priorityIds: Array.isArray(paper.priorityIds) ? paper.priorityIds.filter((id) => typeof id === "string") : [],
+	          typeCounts: paper.typeCounts || {},
+	          optionOrders: normalizeOptionOrderMap(paper.optionOrders),
+	          attempts
+	        };
+	      });
+	  }
+
+	  function mergeSuitePapers(current = [], incoming = []) {
+	    const merged = new Map();
+	    for (const paper of normalizeSuitePapers(current)) merged.set(paper.id, paper);
+	    for (const paper of normalizeSuitePapers(incoming)) {
+	      const previous = merged.get(paper.id);
+	      if (!previous) {
+	        merged.set(paper.id, paper);
+	        continue;
+	      }
+	      const attempts = new Map();
+	      for (const attempt of previous.attempts || []) attempts.set(attempt.runId, attempt);
+	      for (const attempt of paper.attempts || []) attempts.set(attempt.runId, attempt);
+	      merged.set(paper.id, {
+	        ...previous,
+	        ...paper,
+	        ids: paper.ids.length ? paper.ids : previous.ids,
+	        optionOrders: Object.keys(paper.optionOrders || {}).length ? paper.optionOrders : previous.optionOrders,
+	        attempts: [...attempts.values()].sort((left, right) => (left.startedAt || 0) - (right.startedAt || 0))
+	      });
+	    }
+	    return [...merged.values()].sort((left, right) => (left.number || 0) - (right.number || 0));
+	  }
+
+	  function normalizeSuiteSession(raw) {
+	    if (!raw || typeof raw !== "object" || !raw.active) return null;
+	    const paperId = String(raw.paperId || "");
+	    if (!paperId) return null;
+	    if (raw.submitted) {
+	      return {
+	        active: true,
+	        paperId,
+	        runId: String(raw.runId || ""),
+	        submitted: true,
+	        reviewWrongOnly: Boolean(raw.reviewWrongOnly)
+	      };
+	    }
+	    return {
+	      active: true,
+	      paperId,
+	      runId: String(raw.runId || `run-${Date.now()}`),
+	      kind: raw.kind === "wrong" ? "wrong" : "full",
+	      ids: Array.isArray(raw.ids) ? raw.ids.filter((id) => typeof id === "string") : [],
+	      index: Number(raw.index) || 0,
+	      answers: normalizeAnswerMap(raw.answers),
+	      revealed: normalizeBooleanMap(raw.revealed),
+	      outcomes: normalizeSuiteOutcomes(raw.outcomes),
+	      submitted: false,
+	      startedAt: Number(raw.startedAt) || Date.now(),
+	      reviewWrongOnly: false
+	    };
+	  }
+
+	  function normalizeAnswerMap(raw) {
+	    const result = {};
+	    for (const [id, values] of Object.entries(raw || {})) {
+	      if (!Array.isArray(values)) continue;
+	      result[id] = values.map((value) => String(value)).filter(Boolean).sort(sortByOption);
+	    }
+	    return result;
+	  }
+
+	  function normalizeBooleanMap(raw) {
+	    const result = {};
+	    for (const [id, value] of Object.entries(raw || {})) {
+	      if (value) result[id] = true;
+	    }
+	    return result;
+	  }
+
+	  function normalizeOptionOrderMap(raw) {
+	    const result = {};
+	    for (const [id, values] of Object.entries(raw || {})) {
+	      if (!Array.isArray(values)) continue;
+	      result[id] = values.map((value) => String(value)).filter(Boolean);
+	    }
+	    return result;
+	  }
+
+	  function normalizeSuiteOutcomes(raw) {
+	    const result = {};
+	    for (const [id, value] of Object.entries(raw || {})) {
+	      if (!value || typeof value !== "object") continue;
+	      result[id] = {
+	        selected: Array.isArray(value.selected) ? value.selected.map((item) => String(item)).filter(Boolean).sort(sortByOption) : [],
+	        correct: Boolean(value.correct),
+	        effective: value.effective !== false,
+	        revealed: Boolean(value.revealed),
+	        skipped: Boolean(value.skipped),
+	        at: value.at || ""
+	      };
+	    }
+	    return result;
+	  }
+
+	  function mergeMaxNumberMap(current = {}, incoming = {}) {
     const merged = { ...current };
     for (const [id, value] of Object.entries(incoming || {})) {
       merged[id] = Math.max(Number(merged[id]) || 0, Number(value) || 0);
@@ -2546,10 +3442,10 @@
       categories = bank.categories || [];
       questionById = new Map(questions.map((question) => [question.id, question]));
       categoryIds = new Set(categories.map((category) => category.id));
-      if (SPECIAL_REVIEW_MODES.includes(modeBeforeFullLoad)) {
-        state.mode = modeBeforeFullLoad;
-      } else {
-        restorePracticeLocation();
+	      if (SPECIAL_REVIEW_MODES.includes(modeBeforeFullLoad) || modeBeforeFullLoad === "suite") {
+	        state.mode = modeBeforeFullLoad;
+	      } else {
+	        restorePracticeLocation();
       }
       sanitizeState();
       saveState();
@@ -2570,8 +3466,8 @@
     fullBankRetryTimer = setTimeout(() => {
       fullBankRetryTimer = null;
       loadFullQuestionBank({ forceStale: true });
-    }, SPECIAL_REVIEW_MODES.includes(state.mode) ? 900 : 2500);
-  }
+	    }, (SPECIAL_REVIEW_MODES.includes(state.mode) || state.mode === "suite") ? 900 : 2500);
+	  }
 
   function toggleArrayValue(array, value) {
     const index = array.indexOf(value);
