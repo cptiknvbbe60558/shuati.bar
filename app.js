@@ -1457,7 +1457,9 @@
   }
 
   function onClick(event) {
-    const target = event.target.closest("[data-action]");
+    let el = event.target;
+    if (el.nodeType === 3) el = el.parentElement;
+    const target = el.closest("[data-action]");
     if (!target) return;
     const action = target.dataset.action;
 
