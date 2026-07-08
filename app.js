@@ -35,15 +35,15 @@
     "多选": "multiple",
     "判断": "judge"
   };
-	  const MODES = [
-	    ["single", "单选"],
-	    ["multiple", "多选"],
-	    ["judge", "判断"],
-	    ["wrong", "错题"],
-	    ["favorite", "收藏"],
-	    ["suite", "套题练习"],
-	    ["exam300", "模拟考试"]
-	  ];
+  const MODES = [
+    ["single", "单选"],
+    ["multiple", "多选"],
+    ["judge", "判断"],
+    ["wrong", "错题"],
+    ["favorite", "收藏"],
+    ["suite", "强化练习"],
+    ["exam300", "模拟考试"]
+  ];
   const HEADER_TYPE_MODES = MODES.filter(([mode]) => TYPE_MODE_MAP[mode]);
   const DOCK_MODES = MODES.filter(([mode]) => !TYPE_MODE_MAP[mode]);
   const VALID_MODES = [...MODES, ["search", "搜题"]];
@@ -73,7 +73,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260708_2320_state_guard";
+  const ASSET_VERSION = "20260708_2345_dock_reflow";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -734,7 +734,7 @@
       single: `完整题库加载后进入单选 ${FULL_TYPE_COUNTS.single} 题。`,
       multiple: `完整题库加载后进入多选 ${FULL_TYPE_COUNTS.multiple} 题。`,
       judge: `完整题库加载后进入判断 ${FULL_TYPE_COUNTS.judge} 题。`,
-	      suite: "完整题库加载后再生成套题练习。",
+	      suite: "完整题库加载后再生成强化练习。",
 	      exam300: "完整题库加载后再开始模拟考试。",
       wrong: "完整题库加载后再查看错题。",
       favorite: "完整题库加载后再查看收藏。",
@@ -886,24 +886,31 @@
   function renderPracticeDock({ revealed, canSubmit, disabledNavigation = false, allowReveal = true, studyMode = false }) {
     return `
       <div class="practice-dock">
-        <div class="toolbar practice-toolbar">
-          <div class="dock-step-group">
-            <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
-            <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
-          </div>
-          <div class="dock-action-group">
-            <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
-            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
-            <button class="soft-button" data-action="random-question" ${disabledNavigation ? "disabled" : ""}>随机</button>
-            <button class="solid-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
-          </div>
+        <div class="toolbar practice-toolbar dock-primary-row">
+          <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+          <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
+          <button class="solid-button dock-submit-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
+          <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
+          <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
+          <button class="solid-button dock-submit-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
+          <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+          <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
         </div>
-        <div class="dock-nav-row">
-          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
-          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
-            <span></span><span></span><span></span>
-          </button>
-        </div>
+        ${renderDockNavRow()}
+      </div>
+    `;
+  }
+
+  function renderDockNavRow() {
+    const tabClass = (mode) => `tab-button${state.mode === mode ? " active" : ""}`;
+    const utilityActive = state.utilityPanel ? " active" : "";
+    return `
+      <div class="dock-nav-row">
+        <button class="${tabClass("wrong")}" data-action="set-mode" data-mode="wrong">错题</button>
+        <button class="tab-button" data-action="retry-wrong">错题重做</button>
+        <button class="${tabClass("suite")}" data-action="set-mode" data-mode="suite">强化练习</button>
+        <button class="${tabClass("exam300")}" data-action="set-mode" data-mode="exam300">模拟考试</button>
+        <button class="tab-button dock-menu-button dock-text-button${utilityActive}" data-action="toggle-utility-panel" aria-label="其他" aria-pressed="${state.utilityPanel ? "true" : "false"}">其他</button>
       </div>
     `;
   }
@@ -1039,7 +1046,7 @@
 	          <section class="suite-home-card">
 	            <div class="suite-home-top">
 	              <div>
-	                <span class="badge blue">套题练习</span>
+	                <span class="badge blue">强化练习</span>
 	                <h2>按真实考试题量刷一套</h2>
 	                <p>单选 90 题、多选 45 题、判断 20 题，共 ${SUITE_TOTAL_POINTS} 分。优先抽错题和收藏，不够再补普通题。</p>
 	              </div>
@@ -1050,17 +1057,17 @@
 	              <div><strong>45</strong><span>多选 · 45 分</span></div>
 	              <div><strong>20</strong><span>判断 · 10 分</span></div>
 	            </div>
-	            ${ready ? "" : `<p class="footer-note">当前完整题库数量不足，无法按考试题量生成套题。</p>`}
+	            ${ready ? "" : `<p class="footer-note">当前完整题库数量不足，无法按考试题量生成强化练习。</p>`}
 	          </section>
 	          <section class="suite-home-card suite-stats-card">
 	            <div class="suite-rule-grid">
-	              <div><strong>${stats.paperCount}</strong><span>已存套题</span></div>
+	              <div><strong>${stats.paperCount}</strong><span>已存强化</span></div>
 	              <div><strong>${stats.priorityCount}</strong><span>错题/收藏待复练</span></div>
-	              <div><strong>${stats.covered}</strong><span>套题覆盖题数</span></div>
+	              <div><strong>${stats.covered}</strong><span>强化覆盖题数</span></div>
 	            </div>
 	          </section>
 	          <section class="suite-paper-list">
-	            ${latest.length ? latest.map(renderSuitePaperCard).join("") : renderEmpty("还没有套题", "点生成新套，会保存为套题（一），以后可以反复重做。")}
+	            ${latest.length ? latest.map(renderSuitePaperCard).join("") : renderEmpty("还没有强化练习", "点生成新套，会保存为强化练习（一），以后可以反复重做。")}
 	          </section>
 	        </div>
 	        ${renderSuiteHomeDock({ ready, latestPaper })}
@@ -1080,12 +1087,7 @@
 	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(latestPaper?.id || "")}" ${wrongCount ? "" : "disabled"}>错题重做</button>
 	          </div>
 	        </div>
-	        <div class="dock-nav-row">
-	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
-	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
-	            <span></span><span></span><span></span>
-	          </button>
-	        </div>
+	        ${renderDockNavRow()}
 	      </div>
 	    `;
 	  }
@@ -1117,7 +1119,7 @@
 	      return `
 	        <section class="practice-screen suite-screen">
 	          <div class="practice-study-area empty-practice-area">
-	            ${renderEmpty("套题不存在", "回到套题首页重新生成一套。")}
+	            ${renderEmpty("强化练习不存在", "回到强化首页重新生成一套。")}
 	          </div>
 	          ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
 	        </section>
@@ -1132,7 +1134,7 @@
 	      return `
 	        <section class="practice-screen suite-screen">
 	          <div class="practice-study-area empty-practice-area">
-	            ${renderEmpty("这道题不在题库里", "完整题库加载后再进入套题。")}
+	            ${renderEmpty("这道题不在题库里", "完整题库加载后再进入强化练习。")}
 	          </div>
 	          ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
 	        </section>
@@ -1171,24 +1173,17 @@
 	  function renderSuiteDock({ revealed, canSubmit, disabledNavigation = false, studyMode = false }) {
 	    return `
 	      <div class="practice-dock suite-dock">
-	        <div class="toolbar practice-toolbar">
-	          <div class="dock-step-group">
-	            <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
-	            <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
-	          </div>
-	          <div class="dock-action-group">
-	            <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
-	            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
-	            <button class="solid-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
-	            <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
-	          </div>
+	        <div class="toolbar practice-toolbar dock-primary-row">
+	          <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+	          <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
+	          <button class="solid-button dock-submit-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
+	          <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
+	          <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
+	          <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
+	          <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
+	          <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
 	        </div>
-	        <div class="dock-nav-row">
-	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
-	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
-	            <span></span><span></span><span></span>
-	          </button>
-	        </div>
+	        ${renderDockNavRow()}
 	      </div>
 	    `;
 	  }
@@ -1205,11 +1200,11 @@
 	          <section class="suite-report-screen">
 	            <section class="exam-header exam-review-header suite-report-header">
 	              <div>
-	                <h2>${escapeHtml(paper.title || "套题练习")}</h2>
+	                <h2>${escapeHtml(paper.title || "强化练习")}</h2>
 	                <p>${escapeHtml(attempt.kind === "wrong" ? "错题重做" : "整卷练习")} · ${formatPoints(attempt.score.points)}/${SUITE_TOTAL_POINTS} 分 · 错 ${attempt.wrongIds.length} 题</p>
 	              </div>
 	              <div class="toolbar-group">
-	                <button class="soft-button" type="button" data-action="suite-home">套题首页</button>
+	                <button class="soft-button" type="button" data-action="suite-home">强化首页</button>
 	                ${!suite.reviewWrongOnly && attempt.wrongIds.length ? `<button class="soft-button" type="button" data-action="suite-review-wrong" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">只看错题</button>` : ""}
 	                ${suite.reviewWrongOnly ? `<button class="soft-button" type="button" data-action="suite-review-all" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">全部题目</button>` : ""}
 	                <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
@@ -1234,18 +1229,13 @@
 	      <div class="practice-dock suite-dock suite-report-dock">
 	        <div class="toolbar practice-toolbar">
 	          <div class="dock-action-group suite-report-actions">
-	            <button class="soft-button" data-action="suite-home">套题首页</button>
+	            <button class="soft-button" data-action="suite-home">强化首页</button>
 	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
 	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${hasWrong ? "" : "disabled"}>错题重做</button>
 	            <button class="solid-button" data-action="start-suite-paper">新套</button>
 	          </div>
 	        </div>
-	        <div class="dock-nav-row">
-	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
-	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
-	            <span></span><span></span><span></span>
-	          </button>
-	        </div>
+	        ${renderDockNavRow()}
 	      </div>
 	    `;
 	  }
@@ -1391,7 +1381,7 @@
   function renderExamShell(exam, title) {
     const visibleIds = getVisibleExamIds(exam);
     if (!visibleIds.length) {
-      return renderEmpty("没有错题", "这套题目前没有错题，可以切回全部题目查看。");
+      return renderEmpty("没有错题", "这套强化练习目前没有错题，可以切回全部题目查看。");
     }
 
     const ids = visibleIds;
@@ -1930,8 +1920,13 @@
     if (action === "retry-wrong") {
       state.mode = "wrong";
       state.exam = null;
+      state.suite = null;
       state.examStartMenuOpen = false;
+      state.utilityPanel = "";
+      state.categoryMenuOpen = false;
       state.selectedTypes = [...TYPES];
+      const firstWrongId = activeWrongIds()[0];
+      if (firstWrongId) state.currentId = firstWrongId;
       saveAndRender();
       resetViewportScroll();
       return;
@@ -2261,7 +2256,7 @@
 	  function startSuitePaper() {
 	    const picked = buildSuiteQuestionIds();
 	    if (!picked) {
-	      alert("完整题库数量不足，暂时无法按真实考试题量生成套题。");
+	      alert("完整题库数量不足，暂时无法按真实考试题量生成强化练习。");
 	      return;
 	    }
 	    const number = nextSuiteNumber();
@@ -2587,7 +2582,7 @@
 	  }
 
 	  function suitePaperTitle(number) {
-	    return `套题（${toChineseNumber(number)}）`;
+	    return `强化练习（${toChineseNumber(number)}）`;
 	  }
 
 	  function toChineseNumber(value) {

@@ -5720,3 +5720,117 @@ body.practice-fit .suite-paper-actions button {
     grid-template-columns: 1fr;
   }
 }
+
+/* 20260708 dock command map: left/right paging on both ends, no random button. */
+.practice-dock .practice-toolbar.dock-primary-row,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 7px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.practice-dock .practice-toolbar.dock-primary-row button,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 2px;
+  border-radius: 23px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.practice-dock .practice-toolbar.dock-primary-row .nav-icon-button,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row .nav-icon-button {
+  min-height: 50px;
+  font-size: 19px;
+  font-weight: 760;
+}
+
+.practice-dock .practice-toolbar.dock-primary-row .dock-submit-button,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row .dock-submit-button {
+  font-weight: 780;
+}
+
+.dock-nav-row,
+body.practice-fit .dock-nav-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.dock-nav-row > .tab-button,
+body.practice-fit .dock-nav-row > .tab-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 2px;
+  border-radius: 22px;
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dock-nav-row > .tab-button[data-mode="suite"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+.dock-nav-row > .tab-button[data-mode="exam300"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+  font-size: 9.6px;
+}
+
+.dock-menu-button.dock-text-button,
+body.practice-fit .dock-menu-button.dock-text-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+}
+
+.dock-menu-button.dock-text-button span,
+body.practice-fit .dock-menu-button.dock-text-button span {
+  display: none;
+}
+
+@media (max-width: 380px) {
+  .practice-dock .practice-toolbar.dock-primary-row,
+  body.practice-fit .practice-dock .practice-toolbar.dock-primary-row {
+    gap: 5px;
+  }
+
+  .practice-dock .practice-toolbar.dock-primary-row button,
+  body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button {
+    min-height: 44px;
+    border-radius: 22px;
+    font-size: 10px;
+  }
+
+  .practice-dock .practice-toolbar.dock-primary-row .nav-icon-button,
+  body.practice-fit .practice-dock .practice-toolbar.dock-primary-row .nav-icon-button {
+    min-height: 48px;
+    font-size: 18px;
+  }
+
+  .dock-nav-row,
+  body.practice-fit .dock-nav-row {
+    gap: 5px;
+  }
+
+  .dock-nav-row > .tab-button,
+  body.practice-fit .dock-nav-row > .tab-button {
+    min-height: 40px;
+    border-radius: 20px;
+    font-size: 9.6px;
+  }
+
+  .dock-nav-row > .tab-button[data-mode="suite"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+  .dock-nav-row > .tab-button[data-mode="exam300"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+    font-size: 8.8px;
+  }
+}
