@@ -1510,6 +1510,19 @@
         resetViewportScroll();
         return;
       }
+      if (nextMode === state.mode) {
+        if (nextMode === "suite") {
+          state.suite = null;
+        } else if (nextMode === "exam300") {
+          state.exam = null;
+        }
+        state.utilityPanel = "";
+        state.categoryMenuOpen = false;
+        state.examStartMenuOpen = false;
+        saveAndRender();
+        resetViewportScroll();
+        return;
+      }
       state.mode = nextMode;
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
