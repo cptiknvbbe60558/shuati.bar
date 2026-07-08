@@ -1,0 +1,43 @@
+const INDEX_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+const SERVICE_WORKER_CACHE_CONTROL = "no-cache, no-store, must-revalidate";
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/index.html") {
+      const rootUrl = new URL("/", url.origin);
+      if (url.search) rootUrl.search = url.search;
+      const response = await env.ASSETS.fetch(new Request(rootUrl, request));
+      return withHeaders(response, {
+        "Cache-Control": INDEX_CACHE_CONTROL
+      }, 200);
+    }
+
+    const response = await env.ASSETS.fetch(request);
+    const headers = {};
+
+    if (request.method === "GET" && url.pathname === "/") {
+      headers["Cache-Control"] = INDEX_CACHE_CONTROL;
+    }
+
+    if (request.method === "GET" && url.pathname === "/service-worker.js") {
+      headers["Cache-Control"] = SERVICE_WORKER_CACHE_CONTROL;
+      headers["Service-Worker-Allowed"] = "/";
+    }
+
+    return Object.keys(headers).length ? withHeaders(response, headers) : response;
+  }
+};
+
+function withHeaders(response, extraHeaders, forcedStatus) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: forcedStatus || response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
