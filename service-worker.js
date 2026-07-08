@@ -1,8 +1,7 @@
-const CACHE_NAME = "quiz-pwa-v77-suite-home-recent-limit";
-const ASSET_VERSION = "20260708_1515_suite_home_recent_limit";
+const CACHE_NAME = "quiz-pwa-v78-suite-stable";
+const ASSET_VERSION = "20260708_1715_suite_stable";
 const FULL_BANK_URL = `./data/questions.js?v=${ASSET_VERSION}`;
 const ASSETS = [
-  "./",
   "./index.html",
   `./styles.css?v=${ASSET_VERSION}`,
   `./app.js?v=${ASSET_VERSION}`,
@@ -12,7 +11,14 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(ASSETS.map(async (asset) => {
+        const response = await fetch(asset, { cache: "reload", redirect: "follow" });
+        if (isCacheableResponse(response)) await cache.put(asset, response);
+      }))
+    )
+  );
   self.skipWaiting();
 });
 
@@ -31,15 +37,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("./index.html").then(async (cached) => {
-        if (cached) return cached;
-        const response = await fetch(event.request);
-        if (response.ok) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put("./index.html", response.clone());
-        }
-        return response;
-      })
+      networkFirstIndex()
     );
     return;
   }
@@ -51,7 +49,7 @@ self.addEventListener("fetch", (event) => {
         if (cached) return cached;
 
         const response = await fetch(FULL_BANK_URL);
-        if (response.ok) await cache.put(FULL_BANK_URL, response.clone());
+        if (isCacheableResponse(response)) await cache.put(FULL_BANK_URL, response.clone());
         return response;
       })
     );
@@ -61,7 +59,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then(async (response) => {
-        if (response.ok) {
+        if (isCacheableResponse(response)) {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(event.request, response.clone());
         }
@@ -74,3 +72,32 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
+
+async function networkFirstIndex() {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(`./index.html?v=${ASSET_VERSION}`, {
+      cache: "no-store",
+      redirect: "follow"
+    });
+    if (isCacheableResponse(response)) {
+      await cache.put("./index.html", response.clone());
+      return response;
+    }
+  } catch {
+    // Fall back to the last clean index below.
+  }
+
+  const cached = await cache.match("./index.html");
+  if (cached && isCacheableResponse(cached)) return cached;
+  return Response.error();
+}
+
+function isCacheableResponse(response) {
+  return Boolean(
+    response
+    && response.ok
+    && !response.redirected
+    && response.type !== "opaqueredirect"
+  );
+}

@@ -32,8 +32,6 @@
 	    ["judge", "判断"],
 	    ["wrong", "错题"],
 	    ["favorite", "收藏"],
-	    ["judgeCorrect", "判断正确"],
-	    ["allSelect", "全选"],
 	    ["suite", "套题练习"],
 	    ["exam300", "模拟考试"]
 	  ];
@@ -60,15 +58,13 @@
 	  const SUITE_TYPES = Object.keys(SUITE_RULE);
 	  const SUITE_TOTAL_QUESTIONS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count, 0);
 	  const SUITE_TOTAL_POINTS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count * SUITE_RULE[key].points, 0);
-	  const SPECIAL_REVIEW_MODES = ["judgeCorrect", "allSelect"];
+	  const SPECIAL_REVIEW_MODES = [];
   const FULL_TYPE_COUNTS = {
     single: 1204,
     multiple: 965,
     judge: 974
   };
-  const FULL_JUDGE_CORRECT_COUNT = 562;
-  const FULL_ALL_SELECT_COUNT = 402;
-  const ASSET_VERSION = "20260708_1515_suite_home_recent_limit";
+  const ASSET_VERSION = "20260708_1715_suite_stable";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -133,6 +129,9 @@
 
   let state = loadState();
   sanitizeState();
+	  if (state.mode === "suite" && state.suite?.submitted) {
+	    state.suite = null;
+	  }
 	  if (isVerifiedStaffId(state.staffId) && !(state.mode === "suite" && state.suite?.active)) {
 	    restorePracticeLocation();
 	    sanitizeState();
@@ -403,6 +402,8 @@
     if (state.mode === "practice") state.mode = "single";
     if (state.mode === "exam") state.mode = "exam300";
     if (state.mode === "memory") state.mode = "single";
+	    if (state.mode === "judgeCorrect") state.mode = "judge";
+	    if (state.mode === "allSelect") state.mode = "multiple";
 	    if (!VALID_MODES.some(([mode]) => mode === state.mode)) state.mode = "single";
     if (!["", "note", "stats", "filter", "progress", "bank"].includes(state.utilityPanel)) {
       state.utilityPanel = "";
@@ -645,8 +646,6 @@
       single: `完整题库加载后进入单选 ${FULL_TYPE_COUNTS.single} 题。`,
       multiple: `完整题库加载后进入多选 ${FULL_TYPE_COUNTS.multiple} 题。`,
       judge: `完整题库加载后进入判断 ${FULL_TYPE_COUNTS.judge} 题。`,
-      judgeCorrect: `这个模块只放判断答案为正确 ${FULL_JUDGE_CORRECT_COUNT} 题。`,
-	      allSelect: `这个模块只放多选全选 ${FULL_ALL_SELECT_COUNT} 题。`,
 	      suite: "完整题库加载后再生成套题练习。",
 	      exam300: "完整题库加载后再开始模拟考试。",
       wrong: "完整题库加载后再查看错题。",
@@ -1113,27 +1112,31 @@
 	    const ids = suite.reviewWrongOnly ? attempt.wrongIds || [] : attempt.ids || paper.ids || [];
 	    const visibleIds = ids.length ? ids : attempt.ids || paper.ids || [];
 	    return `
-	      <section class="suite-report-screen">
-	        <section class="exam-header exam-review-header suite-report-header">
-	          <div>
-	            <h2>${escapeHtml(paper.title || "套题练习")}</h2>
-	            <p>${escapeHtml(attempt.kind === "wrong" ? "错题重做" : "整卷练习")} · ${formatPoints(attempt.score.points)}/${SUITE_TOTAL_POINTS} 分 · 错 ${attempt.wrongIds.length} 题</p>
-	          </div>
-	          <div class="toolbar-group">
-	            <button class="soft-button" type="button" data-action="suite-home">套题首页</button>
-	            ${!suite.reviewWrongOnly && attempt.wrongIds.length ? `<button class="soft-button" type="button" data-action="suite-review-wrong" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">只看错题</button>` : ""}
-	            ${suite.reviewWrongOnly ? `<button class="soft-button" type="button" data-action="suite-review-all" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">全部题目</button>` : ""}
-	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
-	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${attempt.wrongIds.length ? "" : "disabled"}>错题重做</button>
-	            <button class="solid-button" data-action="start-suite-paper">新套</button>
-	          </div>
-	        </section>
-	        ${renderSuiteScore(attempt.score)}
-	        <section class="exam-review-list">
-	          ${visibleIds.map((id) => renderSuiteReviewItem(paper, attempt, id)).join("")}
-	        </section>
+	      <section class="practice-screen suite-screen suite-report-wrap">
+	        <div class="practice-study-area suite-report-area">
+	          <section class="suite-report-screen">
+	            <section class="exam-header exam-review-header suite-report-header">
+	              <div>
+	                <h2>${escapeHtml(paper.title || "套题练习")}</h2>
+	                <p>${escapeHtml(attempt.kind === "wrong" ? "错题重做" : "整卷练习")} · ${formatPoints(attempt.score.points)}/${SUITE_TOTAL_POINTS} 分 · 错 ${attempt.wrongIds.length} 题</p>
+	              </div>
+	              <div class="toolbar-group">
+	                <button class="soft-button" type="button" data-action="suite-home">套题首页</button>
+	                ${!suite.reviewWrongOnly && attempt.wrongIds.length ? `<button class="soft-button" type="button" data-action="suite-review-wrong" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">只看错题</button>` : ""}
+	                ${suite.reviewWrongOnly ? `<button class="soft-button" type="button" data-action="suite-review-all" data-paper-id="${escapeAttr(paper.id)}" data-run-id="${escapeAttr(attempt.runId)}">全部题目</button>` : ""}
+	                <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
+	                <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${attempt.wrongIds.length ? "" : "disabled"}>错题重做</button>
+	                <button class="solid-button" data-action="start-suite-paper">新套</button>
+	              </div>
+	            </section>
+	            ${renderSuiteScore(attempt.score)}
+	            <section class="exam-review-list">
+	              ${visibleIds.map((id) => renderSuiteReviewItem(paper, attempt, id)).join("")}
+	            </section>
+	          </section>
+	        </div>
+	        ${renderSuiteReportDock(paper, attempt)}
 	      </section>
-	      ${renderSuiteReportDock(paper, attempt)}
 	    `;
 	  }
 
@@ -2648,8 +2651,6 @@
     }
     if (mode === "wrong") return baseQuestions.filter((question) => isActiveWrong(question.id));
     if (mode === "favorite") return baseQuestions.filter((question) => state.favorites[question.id]);
-    if (mode === "judgeCorrect") return questions.filter(isJudgeCorrectAnswer);
-    if (mode === "allSelect") return questions.filter(isAllSelectAnswer);
     return baseQuestions;
   }
 
@@ -3014,8 +3015,6 @@
 	    if (mode === "favorite") {
 	      return Object.keys(state.favorites).filter((id) => questionById.has(id)).length;
 	    }
-	    if (mode === "judgeCorrect") return bank.isStarter ? FULL_JUDGE_CORRECT_COUNT : questions.filter(isJudgeCorrectAnswer).length;
-	    if (mode === "allSelect") return bank.isStarter ? FULL_ALL_SELECT_COUNT : questions.filter(isAllSelectAnswer).length;
 	    if (mode === "suite") return (state.suitePapers || []).length;
 	    return 0;
 	  }
@@ -3063,25 +3062,11 @@
 
   function getPresentedOptions(question) {
     const originalOptions = question.options || [];
-    if (originalOptions.length <= 1) {
-      return originalOptions.map((option) => ({ ...option, originalKey: option.key }));
-    }
-
-    const currentOrder = state.optionOrders[question.id] || [];
-    const originalKeys = originalOptions.map((option) => option.key);
-    const validOrder =
-      currentOrder.length === originalKeys.length &&
-      originalKeys.every((key) => currentOrder.includes(key));
-    const order = validOrder ? currentOrder : shuffle(originalKeys);
-    if (!validOrder) state.optionOrders[question.id] = order;
-
-    const optionByKey = new Map(originalOptions.map((option) => [option.key, option]));
-    return order.map((originalKey, index) => {
-      const option = optionByKey.get(originalKey);
+    return originalOptions.map((option) => {
       return {
-        originalKey,
-        key: question.type === "判断" ? originalKey : String.fromCharCode(65 + index),
-        text: option ? option.text : ""
+        originalKey: option.key,
+        key: option.key,
+        text: option.text || ""
       };
     });
   }
@@ -3096,7 +3081,7 @@
     for (const id of ids) {
       const question = questionById.get(id);
       if (!question || !Array.isArray(question.options) || question.options.length <= 1) continue;
-      state.optionOrders[id] = shuffle(question.options.map((option) => option.key));
+      state.optionOrders[id] = question.options.map((option) => option.key);
     }
   }
 
@@ -3659,7 +3644,11 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+      navigator.serviceWorker
+        .register(`./service-worker.js?v=${ASSET_VERSION}`, {
+          updateViaCache: "none"
+        })
+        .catch(() => {});
     });
   }
 })();
