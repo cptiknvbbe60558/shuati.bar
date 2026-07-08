@@ -5561,6 +5561,16 @@ body.practice-fit .suite-report-screen::-webkit-scrollbar {
   margin-top: 0;
 }
 
+.practice-dock.suite-report-dock .practice-toolbar,
+body.practice-fit .practice-dock.suite-report-dock .practice-toolbar {
+  grid-template-columns: 1fr;
+}
+
+.practice-dock.suite-report-dock .suite-report-actions,
+body.practice-fit .practice-dock.suite-report-dock .suite-report-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .suite-score-card .score-ring {
   color: rgba(17, 24, 39, 0.94);
 }

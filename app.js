@@ -68,7 +68,7 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-	  const ASSET_VERSION = "20260708_1130_suite_mix_wrong_review";
+	  const ASSET_VERSION = "20260708_1415_suite_report_actions";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -1110,7 +1110,29 @@
 	          ${visibleIds.map((id) => renderSuiteReviewItem(paper, attempt, id)).join("")}
 	        </section>
 	      </section>
-	      ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	      ${renderSuiteReportDock(paper, attempt)}
+	    `;
+	  }
+
+	  function renderSuiteReportDock(paper, attempt) {
+	    const hasWrong = Boolean(attempt?.wrongIds?.length);
+	    return `
+	      <div class="practice-dock suite-dock suite-report-dock">
+	        <div class="toolbar practice-toolbar">
+	          <div class="dock-action-group suite-report-actions">
+	            <button class="soft-button" data-action="suite-home">套题首页</button>
+	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(paper.id)}">整卷重做</button>
+	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(paper.id)}" ${hasWrong ? "" : "disabled"}>错题重做</button>
+	            <button class="solid-button" data-action="start-suite-paper">新套</button>
+	          </div>
+	        </div>
+	        <div class="dock-nav-row">
+	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
+	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
+	            <span></span><span></span><span></span>
+	          </button>
+	        </div>
+	      </div>
 	    `;
 	  }
 
@@ -1524,6 +1546,9 @@
         return;
       }
       state.mode = nextMode;
+      if (nextMode === "suite" && state.suite?.submitted) {
+        state.suite = null;
+      }
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.examStartMenuOpen = false;
