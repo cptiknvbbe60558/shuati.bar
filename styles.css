@@ -5544,6 +5544,19 @@ body.practice-fit .question-progress-row .question-status-empty {
   padding-bottom: calc(var(--practice-dock-height, 148px) + 24px);
 }
 
+body.practice-fit .suite-report-screen {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: calc(var(--practice-dock-height, 148px) + 24px);
+}
+
+body.practice-fit .suite-report-screen::-webkit-scrollbar {
+  display: none;
+}
+
 .suite-report-header {
   margin-top: 0;
 }

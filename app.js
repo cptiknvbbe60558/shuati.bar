@@ -54,6 +54,9 @@
 	    multiple: { type: "多选", count: 45, points: 1 },
 	    judge: { type: "判断", count: 20, points: 0.5 }
 	  };
+	  const SUITE_MIX = {
+	    priority: 0.45
+	  };
 	  const SUITE_TYPES = Object.keys(SUITE_RULE);
 	  const SUITE_TOTAL_QUESTIONS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count, 0);
 	  const SUITE_TOTAL_POINTS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count * SUITE_RULE[key].points, 0);
@@ -65,7 +68,7 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-	  const ASSET_VERSION = "20260708_2335_suite_review_nav_left";
+	  const ASSET_VERSION = "20260708_1130_suite_mix_wrong_review";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -802,10 +805,10 @@
             <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
           </div>
           <div class="dock-action-group">
-            <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
+            <button class="solid-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
             <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
             <button class="soft-button" data-action="random-question" ${disabledNavigation ? "disabled" : ""}>随机</button>
-            <button class="solid-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
+            <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
           </div>
         </div>
         <div class="dock-nav-row">
@@ -1064,9 +1067,9 @@
 	            <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
 	          </div>
 	          <div class="dock-action-group">
-	            <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
-	            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
 	            <button class="solid-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
+	            <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
+	            <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
 	            <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
 	          </div>
 	        </div>
@@ -1695,9 +1698,7 @@
 	    }
 
 	    if (action === "suite-review-wrong") {
-	      setSuiteReviewMode(target, true);
-	      saveAndRender();
-	      resetViewportScroll();
+	      startSuiteRun(target.dataset.paperId, "wrong");
 	      return;
 	    }
 
@@ -2187,18 +2188,55 @@
 
 	  function pickSuiteTypeQuestions(typedQuestions, count) {
 	    const unique = uniqueQuestions(typedQuestions);
+	    const priorityQuota = Math.round(count * SUITE_MIX.priority);
+	    const used = new Set();
 	    const priority = unique.filter((question) => isSuitePriority(question.id));
-	    const pickedPriority = sortSuiteCandidates(priority, true).slice(0, count);
-	    const used = new Set(pickedPriority.map((question) => question.id));
-	    const fill = sortSuiteCandidates(
-	      unique.filter((question) => !used.has(question.id)),
+	    const pickedPriority = takeSuiteCandidates(priority, priorityQuota, used, true);
+	    const pickedHistoryWrong = takeSuiteCandidates(
+	      unique.filter((question) => isHistoricalWrong(question.id)),
+	      priorityQuota - pickedPriority.length,
+	      used,
 	      false
-	    ).slice(0, count - pickedPriority.length);
-	    const picked = [...pickedPriority, ...fill];
+	    );
+	    const remainingCount = count - pickedPriority.length - pickedHistoryWrong.length;
+	    const coverageFill = takeSuiteCoverageCandidates(unique, remainingCount, used);
+	    const picked = [...pickedPriority, ...pickedHistoryWrong, ...coverageFill];
 	    return {
 	      ids: picked.map((question) => question.id),
-	      priorityIds: pickedPriority.map((question) => question.id)
+	      priorityIds: [...pickedPriority, ...pickedHistoryWrong].map((question) => question.id)
 	    };
+	  }
+
+	  function takeSuiteCandidates(source, count, used, priorityOnly) {
+	    const limit = Math.max(0, count);
+	    if (!limit) return [];
+	    const picked = sortSuiteCandidates(
+	      source.filter((question) => !used.has(question.id)),
+	      priorityOnly
+	    ).slice(0, limit);
+	    picked.forEach((question) => used.add(question.id));
+	    return picked;
+	  }
+
+	  function takeSuiteCoverageCandidates(source, count, used) {
+	    const limit = Math.max(0, count);
+	    if (!limit) return [];
+	    const picked = sortSuiteCoverageCandidates(
+	      source.filter((question) => !used.has(question.id))
+	    ).slice(0, limit);
+	    picked.forEach((question) => used.add(question.id));
+	    return picked;
+	  }
+
+	  function sortSuiteCoverageCandidates(source) {
+	    return shuffle(source).sort((left, right) => {
+	      const exposureDelta = (state.suiteExposure[left.id] || 0) - (state.suiteExposure[right.id] || 0);
+	      if (exposureDelta) return exposureDelta;
+	      const leftMastered = isMastered(left.id) ? 1 : 0;
+	      const rightMastered = isMastered(right.id) ? 1 : 0;
+	      if (leftMastered !== rightMastered) return leftMastered - rightMastered;
+	      return 0;
+	    });
 	  }
 
 	  function sortSuiteCandidates(source, priorityOnly) {
@@ -2221,7 +2259,11 @@
 	  }
 
 	  function isSuitePriority(id) {
-	    return isActiveWrong(id) || (Boolean(state.favorites[id]) && !isMastered(id));
+	    return isActiveWrong(id) || Boolean(state.favorites[id]);
+	  }
+
+	  function isHistoricalWrong(id) {
+	    return Boolean(wrongEntry(id) && !isSuitePriority(id));
 	  }
 
 	  function updateSuiteAnswer(key) {
