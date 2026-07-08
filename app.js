@@ -64,7 +64,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260708_1715_suite_stable";
+  const ASSET_VERSION = "20260708_1915_safari_navigation";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";

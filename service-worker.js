@@ -1,8 +1,7 @@
-const CACHE_NAME = "quiz-pwa-v78-suite-stable";
-const ASSET_VERSION = "20260708_1715_suite_stable";
+const CACHE_NAME = "quiz-pwa-v79-safari-navigation";
+const ASSET_VERSION = "20260708_1915_safari_navigation";
 const FULL_BANK_URL = `./data/questions.js?v=${ASSET_VERSION}`;
 const ASSETS = [
-  "./index.html",
   `./styles.css?v=${ASSET_VERSION}`,
   `./app.js?v=${ASSET_VERSION}`,
   `./data/starter.js?v=${ASSET_VERSION}`,
@@ -36,9 +35,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   if (event.request.mode === "navigate") {
-    event.respondWith(
-      networkFirstIndex()
-    );
+    // Let Safari handle document navigation itself. Cloudflare Pages redirects
+    // /index.html to /, and WebKit treats a rejected redirected SW response as
+    // a hard page failure.
     return;
   }
 
@@ -72,26 +71,6 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
-
-async function networkFirstIndex() {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(`./index.html?v=${ASSET_VERSION}`, {
-      cache: "no-store",
-      redirect: "follow"
-    });
-    if (isCacheableResponse(response)) {
-      await cache.put("./index.html", response.clone());
-      return response;
-    }
-  } catch {
-    // Fall back to the last clean index below.
-  }
-
-  const cached = await cache.match("./index.html");
-  if (cached && isCacheableResponse(cached)) return cached;
-  return Response.error();
-}
 
 function isCacheableResponse(response) {
   return Boolean(
