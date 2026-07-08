@@ -15,6 +15,15 @@
   let bank = window.QUIZ_BANK;
 
   const STORAGE_KEY = "customer-manager-quiz-state-v1";
+  const STORAGE_BACKUP_KEY = `${STORAGE_KEY}-backup`;
+  const STORAGE_LEGACY_KEYS = [
+    STORAGE_KEY,
+    STORAGE_BACKUP_KEY,
+    "customer-manager-quiz-state",
+    "quiz-pwa-state",
+    "quiz-progress"
+  ];
+  const STATE_SCHEMA_VERSION = 4;
   const TYPES = ["单选", "多选", "判断"];
   const TYPE_MODE_MAP = {
     single: "单选",
@@ -64,7 +73,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260708_2120_suite_polish";
+  const ASSET_VERSION = "20260708_2320_state_guard";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -165,8 +174,38 @@
   registerServiceWorker();
 
   function loadState() {
+    const saved = readStoredState();
+    if (!saved) return { ...defaultState };
+    return normalizeLoadedState(saved);
+  }
+
+  function readStoredState() {
+    const seen = new Set();
+    const candidates = [];
+    for (const key of STORAGE_LEGACY_KEYS) {
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          candidates.push(parsed);
+        }
+      } catch {
+        // Ignore corrupt snapshots and keep looking for a usable backup.
+      }
+    }
+    if (!candidates.length) return null;
+    return candidates.sort((left, right) => storedStateStamp(right) - storedStateStamp(left))[0];
+  }
+
+  function storedStateStamp(payload = {}) {
+    return Date.parse(payload._savedAt || payload.exportedAt || payload.updatedAt || "") || 0;
+  }
+
+  function normalizeLoadedState(saved = {}) {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
       return {
         ...defaultState,
         ...saved,
@@ -198,13 +237,7 @@
 
   function saveState() {
     rememberPracticeLocation();
-    const snapshot = {
-      ...state,
-      utilityPanel: "",
-      categoryMenuOpen: false,
-      examStartMenuOpen: false
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    persistLocalState(createStorageSnapshot());
     if (
       PROTECTED_CLOUD_SYNC_ENABLED
       && protectedSyncDirty
@@ -212,6 +245,49 @@
       && remoteSyncStaffId === state.staffId
     ) {
       scheduleRemoteStateSave();
+    }
+  }
+
+  function createStorageSnapshot() {
+    const snapshot = {
+      ...state,
+      _schemaVersion: STATE_SCHEMA_VERSION,
+      _savedAt: new Date().toISOString(),
+      _assetVersion: ASSET_VERSION,
+      utilityPanel: "",
+      categoryMenuOpen: false,
+      examStartMenuOpen: false
+    };
+    return snapshot;
+  }
+
+  function persistLocalState(snapshot) {
+    const full = JSON.stringify(snapshot);
+    try {
+      localStorage.setItem(STORAGE_KEY, full);
+      localStorage.setItem(STORAGE_BACKUP_KEY, full);
+      return;
+    } catch {
+      // Quota or storage hiccups should never crash the quiz screen.
+    }
+
+    try {
+      const compact = {
+        ...snapshot,
+        drafts: {},
+        revealed: {},
+        optionOrders: {},
+        specialIndexes: {},
+        exam: null,
+        categoryMenuOpen: false,
+        examStartMenuOpen: false,
+        utilityPanel: ""
+      };
+      const compactJson = JSON.stringify(compact);
+      localStorage.setItem(STORAGE_KEY, compactJson);
+      localStorage.setItem(STORAGE_BACKUP_KEY, compactJson);
+    } catch {
+      // Keep the last good local snapshot instead of blocking the UI.
     }
   }
 
@@ -227,7 +303,7 @@
       if (state.staffId !== staffId) return;
       mergeRemoteState(payload);
       sanitizeState();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      persistLocalState(createStorageSnapshot());
       render();
     } catch {
       // The local protected records stay available when cloud storage is unreachable.
@@ -248,6 +324,9 @@
 	      payload.favoriteSync || {},
       payload.favorites || {}
     );
+    state.notes = { ...(payload.notes || {}), ...(state.notes || {}) };
+    state.suiteExposure = mergeMaxNumberMap(state.suiteExposure, payload.suiteExposure || {});
+    state.suitePapers = mergeSuitePapers(state.suitePapers, payload.suitePapers || []);
     materializeFavoritesFromSync();
   }
 
@@ -268,22 +347,16 @@
     ) return;
     const revision = protectedSyncRevision;
     try {
-      const beforeMerge = JSON.stringify({
-        favorites: state.favorites,
-        wrong: state.wrong
-      });
+      const beforeMerge = protectedStateSignature();
       const cloudPayload = await readProtectedCloudState(staffId);
       if (state.staffId !== staffId) return;
       mergeRemoteState(cloudPayload);
       const payload = buildProtectedCloudPayload();
       await writeProtectedCloudState(staffId, payload);
       if (state.staffId === staffId) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        persistLocalState(createStorageSnapshot());
         if (revision === protectedSyncRevision) protectedSyncDirty = false;
-        const afterMerge = JSON.stringify({
-          favorites: state.favorites,
-          wrong: state.wrong
-        });
+        const afterMerge = protectedStateSignature();
         if (beforeMerge !== afterMerge) render();
         if (protectedSyncDirty) scheduleRemoteStateSave();
       }
@@ -302,14 +375,29 @@
   function buildProtectedCloudPayload() {
     ensureFavoriteSyncRecords();
     return {
-	      version: 2,
+	      version: 3,
 	      updatedAt: new Date().toISOString(),
 	      favorites: state.favorites,
 	      favoriteSync: state.favoriteSync,
 	      wrong: state.wrong,
-	      mastery: state.mastery
+	      mastery: state.mastery,
+	      notes: state.notes,
+	      suiteExposure: state.suiteExposure,
+	      suitePapers: state.suitePapers
 	    };
 	  }
+
+  function protectedStateSignature() {
+    return JSON.stringify({
+      favorites: state.favorites,
+      favoriteSync: state.favoriteSync,
+      wrong: state.wrong,
+      mastery: state.mastery,
+      notes: state.notes,
+      suiteExposure: state.suiteExposure,
+      suitePapers: state.suitePapers
+    });
+  }
 
   async function readProtectedCloudState(staffId) {
     const token = await getProtectedCloudToken(staffId);
@@ -3644,9 +3732,23 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
     window.addEventListener("load", () => {
+      const controlled = Boolean(navigator.serviceWorker.controller);
       navigator.serviceWorker
-        .register(`./service-worker.js?v=${ASSET_VERSION}`, {
-          updateViaCache: "none"
+        .getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .then(async () => {
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(
+              keys
+                .filter((key) => key.startsWith("quiz-pwa-") || key.startsWith("shuati-bar-"))
+                .map((key) => caches.delete(key))
+            );
+          }
+          if (controlled && !sessionStorage.getItem("shuati-sw-cleaned")) {
+            sessionStorage.setItem("shuati-sw-cleaned", "1");
+            window.location.reload();
+          }
         })
         .catch(() => {});
     });

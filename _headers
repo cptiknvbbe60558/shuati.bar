@@ -7,3 +7,18 @@
 
 /
   Cache-Control: public, max-age=0, must-revalidate
+
+/app.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/styles.css
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/data/starter.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/data/questions.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: no-cache, no-store, must-revalidate
