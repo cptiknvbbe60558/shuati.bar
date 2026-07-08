@@ -1,5 +1,5 @@
-const CACHE_NAME = "quiz-pwa-v79-safari-navigation";
-const ASSET_VERSION = "20260708_1915_safari_navigation";
+const CACHE_NAME = "quiz-pwa-v80-suite-polish";
+const ASSET_VERSION = "20260708_2120_suite_polish";
 const FULL_BANK_URL = `./data/questions.js?v=${ASSET_VERSION}`;
 const ASSETS = [
   `./styles.css?v=${ASSET_VERSION}`,
