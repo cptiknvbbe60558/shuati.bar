@@ -68,7 +68,7 @@
   };
   const FULL_JUDGE_CORRECT_COUNT = 562;
   const FULL_ALL_SELECT_COUNT = 402;
-	  const ASSET_VERSION = "20260708_1415_suite_report_actions";
+  const ASSET_VERSION = "20260708_1515_suite_home_recent_limit";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
   const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
@@ -943,7 +943,8 @@
 	    const ready = SUITE_TYPES.every((key) => counts[SUITE_RULE[key].type] >= SUITE_RULE[key].count);
 	    const papers = [...state.suitePapers].sort((left, right) => (right.number || 0) - (left.number || 0));
 	    const stats = suiteStats();
-	    const latest = papers.slice(0, 8);
+    const latest = papers.slice(0, 3);
+	    const latestPaper = latest[0] || null;
 
 	    return `
 	      <section class="practice-screen suite-screen">
@@ -975,8 +976,30 @@
 	            ${latest.length ? latest.map(renderSuitePaperCard).join("") : renderEmpty("还没有套题", "点生成新套，会保存为套题（一），以后可以反复重做。")}
 	          </section>
 	        </div>
-	        ${renderSuiteDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
+	        ${renderSuiteHomeDock({ ready, latestPaper })}
 	      </section>
+	    `;
+	  }
+
+	  function renderSuiteHomeDock({ ready, latestPaper }) {
+	    const latestAttempt = latestPaper ? latestSuiteAttempt(latestPaper) : null;
+	    const wrongCount = latestAttempt?.wrongIds?.length || 0;
+	    return `
+	      <div class="practice-dock suite-dock suite-home-dock">
+	        <div class="toolbar practice-toolbar">
+	          <div class="dock-action-group suite-home-actions">
+	            <button class="solid-button" data-action="start-suite-paper" ${ready ? "" : "disabled"}>新套</button>
+	            <button class="soft-button" data-action="retry-suite-full" data-paper-id="${escapeAttr(latestPaper?.id || "")}" ${latestPaper ? "" : "disabled"}>最近重做</button>
+	            <button class="soft-button" data-action="retry-suite-wrong" data-paper-id="${escapeAttr(latestPaper?.id || "")}" ${wrongCount ? "" : "disabled"}>错题重做</button>
+	          </div>
+	        </div>
+	        <div class="dock-nav-row">
+	          ${renderModeTabs("dock-tabs dock-secondary-tabs", true, DOCK_MODES)}
+	          <button class="dock-menu-button" data-action="toggle-utility-panel" aria-label="更多">
+	            <span></span><span></span><span></span>
+	          </button>
+	        </div>
+	      </div>
 	    `;
 	  }
 
@@ -1534,7 +1557,7 @@
       }
       if (nextMode === state.mode) {
         if (nextMode === "suite") {
-          state.suite = null;
+          if (state.suite?.submitted || !state.suite?.active) state.suite = null;
         } else if (nextMode === "exam300") {
           state.exam = null;
         }

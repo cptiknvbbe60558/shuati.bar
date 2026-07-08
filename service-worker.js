@@ -1,5 +1,5 @@
-const CACHE_NAME = "quiz-pwa-v75-suite-report-actions";
-const ASSET_VERSION = "20260708_1415_suite_report_actions";
+const CACHE_NAME = "quiz-pwa-v77-suite-home-recent-limit";
+const ASSET_VERSION = "20260708_1515_suite_home_recent_limit";
 const FULL_BANK_URL = `./data/questions.js?v=${ASSET_VERSION}`;
 const ASSETS = [
   "./",
