@@ -113,6 +113,9 @@ async function run() {
   assert(checks.questions.cacheControl.includes("no-store"), `questions.js can be cached stale: ${checks.questions.cacheControl}`);
   assert(checks.protectedStateBefore.success, `protected state read failed: ${JSON.stringify(checks.protectedStateBefore)}`);
 
+  const backup = await runScript("backup-state.js");
+  assert(backup.ok, `state backup failed: ${JSON.stringify(backup)}`);
+
   const browser = {
     safari: await runScript("safari-smoke.js"),
     protection: await runScript("protection-smoke.js"),
@@ -129,6 +132,12 @@ async function run() {
     targetUrl,
     staffId,
     checks,
+    backup: {
+      ok: backup.ok,
+      outputPath: backup.outputPath,
+      staffCount: backup.staffCount,
+      totals: backup.totals
+    },
     browser: {
       safari: {
         ok: browser.safari.ok,
