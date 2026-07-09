@@ -7,7 +7,17 @@ pages_build_output_dir = "."
 binding = "SHUATI_STATE"
 id = "81d5b0e85ad8481a8cc266b92a42a6db"
 
+[[d1_databases]]
+binding = "SHUATI_DB"
+database_name = "shuati_state"
+database_id = "3e58bdf2-9f05-42f3-a5e8-abecee93b7e9"
+
 [env.production]
 [[env.production.kv_namespaces]]
 binding = "SHUATI_STATE"
 id = "81d5b0e85ad8481a8cc266b92a42a6db"
+
+[[env.production.d1_databases]]
+binding = "SHUATI_DB"
+database_name = "shuati_state"
+database_id = "3e58bdf2-9f05-42f3-a5e8-abecee93b7e9"

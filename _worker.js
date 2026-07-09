@@ -59,7 +59,7 @@ async function handleStateApi(request, env, url) {
     return new Response(null, { status: 204, headers });
   }
 
-  if (!env.SHUATI_STATE) {
+  if (!env.SHUATI_DB && !env.SHUATI_STATE) {
     return json({ success: false, error: "state_storage_not_configured" }, 503, headers);
   }
 
@@ -71,8 +71,12 @@ async function handleStateApi(request, env, url) {
   const key = `staff:${staffId}:protected`;
 
   if (request.method === "GET") {
-    const value = await env.SHUATI_STATE.get(key, { type: "json" });
-    return json({ success: true, value: value || {} }, 200, headers);
+    const d1Value = await readD1State(env, staffId);
+    if (d1Value) return json({ success: true, value: d1Value }, 200, headers);
+    const kvValue = env.SHUATI_STATE
+      ? await env.SHUATI_STATE.get(key, { type: "json" })
+      : null;
+    return json({ success: true, value: kvValue || {} }, 200, headers);
   }
 
   if (request.method === "POST") {
@@ -85,18 +89,28 @@ async function handleStateApi(request, env, url) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return json({ success: false, error: "invalid_payload" }, 400, headers);
     }
-    try {
-      await env.SHUATI_STATE.put(key, JSON.stringify(payload));
-    } catch (error) {
-      console.error("state_write_failed", {
-        staffId,
-        message: error?.message || String(error)
-      });
-      return json({
-        success: false,
-        error: "state_write_failed",
-        retryAfterMs: 30 * 60 * 1000
-      }, 200, headers);
+    const wroteD1 = await writeD1State(env, staffId, payload);
+    if (!wroteD1) {
+      if (!env.SHUATI_STATE) {
+        return json({
+          success: false,
+          error: "state_write_failed",
+          retryAfterMs: 30 * 60 * 1000
+        }, 200, headers);
+      }
+      try {
+        await env.SHUATI_STATE.put(key, JSON.stringify(payload));
+      } catch (error) {
+        console.error("state_write_failed", {
+          staffId,
+          message: error?.message || String(error)
+        });
+        return json({
+          success: false,
+          error: "state_write_failed",
+          retryAfterMs: 30 * 60 * 1000
+        }, 200, headers);
+      }
     }
     return json({ success: true }, 200, headers);
   }
@@ -108,6 +122,48 @@ function isVerifiedStaffId(value) {
   if (!/^\d{6}$/.test(String(value || ""))) return false;
   const number = Number(value);
   return number >= 704001 && number <= 704099;
+}
+
+async function readD1State(env, staffId) {
+  if (!env.SHUATI_DB) return null;
+  try {
+    const row = await env.SHUATI_DB
+      .prepare("SELECT data FROM staff_state WHERE staff_id = ?")
+      .bind(staffId)
+      .first();
+    if (!row?.data) return null;
+    return JSON.parse(row.data);
+  } catch (error) {
+    console.error("state_d1_read_failed", {
+      staffId,
+      message: error?.message || String(error)
+    });
+    return null;
+  }
+}
+
+async function writeD1State(env, staffId, payload) {
+  if (!env.SHUATI_DB) return false;
+  try {
+    const updatedAt = new Date().toISOString();
+    await env.SHUATI_DB
+      .prepare(`
+        INSERT INTO staff_state (staff_id, data, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(staff_id) DO UPDATE SET
+          data = excluded.data,
+          updated_at = excluded.updated_at
+      `)
+      .bind(staffId, JSON.stringify(payload), updatedAt)
+      .run();
+    return true;
+  } catch (error) {
+    console.error("state_d1_write_failed", {
+      staffId,
+      message: error?.message || String(error)
+    });
+    return false;
+  }
 }
 
 function json(payload, status, headers) {
