@@ -73,15 +73,9 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260708_2345_dock_reflow";
+  const ASSET_VERSION = "20260709_0205_suite_guard";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
-  const PROTECTED_CLOUD_KEY_NAME = "shuati-bar-protected-v1";
-  const PROTECTED_CLOUD_DATA_KEY = "protected-state-v2";
-  const PROTECTED_CLOUD_SEED_SALT = [
-    "shuati.bar",
-    "customer-manager-quiz",
-    "favorites-wrong-v1"
-  ];
+  const PROTECTED_STATE_ENDPOINT = "/api/state";
 
   let questions = bank.questions || [];
   let categories = bank.categories || [];
@@ -95,9 +89,6 @@
   let remoteSyncTimer = null;
   let remoteSyncReady = false;
   let remoteSyncStaffId = "";
-  let remoteSyncToken = "";
-  let remoteSyncTokenStaffId = "";
-  let remoteSyncTokenExpiresAt = 0;
   let protectedSyncDirty = false;
   let protectedSyncRevision = 0;
   let examTimer = null;
@@ -400,10 +391,11 @@
   }
 
   async function readProtectedCloudState(staffId) {
-    const token = await getProtectedCloudToken(staffId);
-    const response = await fetch(`https://prefs.us/read/?${encodeURIComponent(PROTECTED_CLOUD_DATA_KEY)}`, {
+    const response = await fetch(`${PROTECTED_STATE_ENDPOINT}/${encodeURIComponent(staffId)}`, {
       cache: "no-store",
-      headers: protectedCloudHeaders(token)
+      headers: {
+        Accept: "application/json"
+      }
     });
     if (!response.ok) return {};
     const envelope = await response.json();
@@ -417,15 +409,13 @@
   }
 
   async function writeProtectedCloudState(staffId, payload) {
-    const token = await getProtectedCloudToken(staffId, true);
     const response = await fetch(
-      `https://prefs.us/write/?&${encodeURIComponent(PROTECTED_CLOUD_DATA_KEY)}=`,
+      `${PROTECTED_STATE_ENDPOINT}/${encodeURIComponent(staffId)}`,
       {
         method: "POST",
         cache: "no-store",
         headers: {
-          ...protectedCloudHeaders(token),
-          "Content-Type": "text/plain"
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
       }
@@ -433,48 +423,6 @@
     if (!response.ok) throw new Error("protected_cloud_write_failed");
     const result = await response.json();
     if (!result?.success) throw new Error("protected_cloud_write_rejected");
-  }
-
-  async function getProtectedCloudToken(staffId, forceRefresh = false) {
-    const reusable = !forceRefresh
-      && remoteSyncToken
-      && remoteSyncTokenStaffId === staffId
-      && Date.now() < remoteSyncTokenExpiresAt;
-    if (reusable) return remoteSyncToken;
-
-    const seedHash = hashProtectedCloudSeed([staffId, ...PROTECTED_CLOUD_SEED_SALT]);
-    const response = await fetch(
-      `https://prefs.us/getkey/?name=${encodeURIComponent(PROTECTED_CLOUD_KEY_NAME)}&seed=${seedHash}`,
-      {
-        cache: "no-store",
-        headers: { "X-Prefs-Secure": window.location.protocol }
-      }
-    );
-    if (!response.ok) throw new Error("protected_cloud_key_failed");
-    const result = await response.json();
-    if (!result?.success || !result.token) throw new Error("protected_cloud_key_rejected");
-    remoteSyncToken = result.token;
-    remoteSyncTokenStaffId = staffId;
-    remoteSyncTokenExpiresAt = Date.now() + 45000;
-    return remoteSyncToken;
-  }
-
-  function protectedCloudHeaders(token) {
-    return {
-      "X-Authorization": `Token ${token}`,
-      "X-Prefs-Secure": window.location.protocol
-    };
-  }
-
-  function hashProtectedCloudSeed(seed) {
-    return seed.map((part) => {
-      const source = String(part).padStart(8, "0");
-      let hash = 5381;
-      for (let index = 0; index < source.length; index += 1) {
-        hash = (hash * 33) ^ source.charCodeAt(index);
-      }
-      return (hash >>> 0).toString(16);
-    }).join("");
   }
 
   function sanitizeState() {
@@ -1840,7 +1788,9 @@
 	    }
 
 	    if (action === "suite-review-wrong") {
-	      startSuiteRun(target.dataset.paperId, "wrong");
+	      setSuiteReviewMode(target, true);
+	      saveAndRender();
+	      resetViewportScroll();
 	      return;
 	    }
 
@@ -2013,9 +1963,6 @@
     state.staffId = value;
     remoteSyncReady = false;
     remoteSyncStaffId = value;
-    remoteSyncToken = "";
-    remoteSyncTokenStaffId = "";
-    remoteSyncTokenExpiresAt = 0;
     restorePracticeLocation();
     saveAndRender();
     window.scrollTo({ top: 0 });

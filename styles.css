@@ -5834,3 +5834,161 @@ body.practice-fit .dock-menu-button.dock-text-button span {
     font-size: 8.8px;
   }
 }
+
+/* 20260709 suite stability: suite home/report are scrollable panes above the dock. */
+body.practice-fit .suite-screen {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.practice-fit .suite-screen .practice-study-area.suite-home-area,
+body.practice-fit .suite-screen .practice-study-area.suite-report-area {
+  display: block;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 18px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+body.practice-fit .suite-screen .practice-study-area.suite-home-area::-webkit-scrollbar,
+body.practice-fit .suite-screen .practice-study-area.suite-report-area::-webkit-scrollbar {
+  display: none;
+}
+
+body.practice-fit .suite-screen .suite-report-screen {
+  display: grid;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  gap: 12px;
+  padding-bottom: 18px;
+}
+
+body.practice-fit .suite-screen .suite-home-card,
+body.practice-fit .suite-screen .suite-paper-card,
+body.practice-fit .suite-screen .suite-report-header,
+body.practice-fit .suite-screen .suite-score-card,
+body.practice-fit .suite-screen .exam-review-card {
+  position: relative;
+  z-index: 1;
+}
+
+body.practice-fit .practice-dock.suite-home-dock,
+body.practice-fit .practice-dock.suite-report-dock {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+}
+
+body.practice-fit .practice-dock.suite-home-dock .practice-toolbar,
+body.practice-fit .practice-dock.suite-report-dock .practice-toolbar {
+  grid-template-columns: 1fr;
+}
+
+body.practice-fit .practice-dock.suite-home-dock .suite-home-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+body.practice-fit .practice-dock.suite-report-dock .suite-report-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+body.practice-fit .suite-report-header .toolbar-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 380px) {
+  body.practice-fit .practice-dock.suite-report-dock .suite-report-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 20260709 final suite guard: keep suite content and the dock in separate rows. */
+body.practice-fit .practice-workspace,
+body.practice-fit .suite-screen {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body.practice-fit .suite-screen {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+}
+
+body.practice-fit .suite-screen > .practice-study-area {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body.practice-fit .suite-screen > .suite-home-area,
+body.practice-fit .suite-screen > .suite-report-area {
+  display: block !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 8px !important;
+  scrollbar-width: none;
+}
+
+body.practice-fit .suite-screen > .suite-home-area::-webkit-scrollbar,
+body.practice-fit .suite-screen > .suite-report-area::-webkit-scrollbar {
+  display: none;
+}
+
+body.practice-fit .suite-screen .suite-home-card,
+body.practice-fit .suite-screen .suite-stats-card,
+body.practice-fit .suite-screen .suite-paper-list,
+body.practice-fit .suite-screen .suite-paper-card,
+body.practice-fit .suite-screen .suite-report-screen,
+body.practice-fit .suite-screen .suite-report-header,
+body.practice-fit .suite-screen .suite-score-card,
+body.practice-fit .suite-screen .exam-review-list,
+body.practice-fit .suite-screen .exam-review-card {
+  position: relative !important;
+  z-index: 1 !important;
+  transform: none !important;
+}
+
+body.practice-fit .suite-screen .suite-home-area > * + * {
+  margin-top: 12px !important;
+}
+
+body.practice-fit .suite-screen .suite-paper-list,
+body.practice-fit .suite-screen .exam-review-list {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+body.practice-fit .suite-screen .suite-report-screen {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding-bottom: 8px !important;
+}
+
+body.practice-fit .suite-screen .practice-dock,
+body.practice-fit .practice-dock.suite-dock {
+  position: relative !important;
+  z-index: 30 !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+}
