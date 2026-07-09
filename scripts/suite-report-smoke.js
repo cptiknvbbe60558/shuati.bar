@@ -42,6 +42,34 @@ async function login(page, targetUrl, staffId) {
   await waitForFullBank(page);
 }
 
+async function installStateApiMock(context) {
+  const apiWrites = [];
+  await context.route("**/api/state/**", async (route, request) => {
+    if (request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, value: {} })
+      });
+      return;
+    }
+    if (["POST", "PUT", "PATCH"].includes(request.method())) {
+      apiWrites.push({
+        method: request.method(),
+        postData: request.postData() || ""
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true })
+      });
+      return;
+    }
+    await route.continue();
+  });
+  return apiWrites;
+}
+
 async function clickButton(page, selector, label) {
   const button = page.locator(selector).first();
   if (!(await button.count())) throw new Error(`${label} missing: ${selector}`);
@@ -94,6 +122,26 @@ async function assertDockHealthy(page, label) {
     throw new Error(`${label}: enabled dock buttons out of viewport: ${JSON.stringify(snapshot.enabledOutOfView)}`);
   }
   return snapshot;
+}
+
+async function assertSuitePrimaryDockOrder(page, label) {
+  const primaryActions = await page.evaluate(() => (
+    [...document.querySelectorAll(".dock-primary-row button")].map((button) => button.dataset.action || "")
+  ));
+  const expected = [
+    "previous-suite",
+    "next-suite",
+    "suite-submit-answer",
+    "suite-reveal-answer",
+    "toggle-study-mode",
+    "finish-suite",
+    "previous-suite",
+    "next-suite"
+  ];
+  if (JSON.stringify(primaryActions) !== JSON.stringify(expected)) {
+    throw new Error(`${label}: suite dock primary order changed: ${JSON.stringify(primaryActions)}`);
+  }
+  return primaryActions;
 }
 
 async function assertSuiteReportLayout(page, label) {
@@ -202,6 +250,7 @@ async function run() {
     executablePath: config.chromePath
   });
   const context = await browser.newContext({ ...devices["iPhone 14"], locale: "zh-CN" });
+  const apiWrites = await installStateApiMock(context);
   const page = await context.newPage();
   const browserErrors = [];
   const results = [];
@@ -221,6 +270,7 @@ async function run() {
       "enter suite run"
     );
     results.push({ step: "suite-run-dock", dock: await assertDockHealthy(page, "suite run") });
+    results.push({ step: "suite-run-primary-order", primary: await assertSuitePrimaryDockOrder(page, "suite run") });
 
     await clickButton(page, 'button[data-action="finish-suite"]:not([disabled])', "finish suite");
     await page.waitForSelector(".suite-report-wrap", { timeout: 7000 });
@@ -230,18 +280,19 @@ async function run() {
 
     await clickButton(
       page,
-      '.suite-report-dock button[data-action="retry-suite-wrong"]:not([disabled]), .suite-report-header button[data-action="suite-review-wrong"]:not([disabled])',
-      "enter suite wrong retry"
+      '.suite-report-header button[data-action="suite-review-wrong"]:not([disabled])',
+      "enter suite wrong retry from header"
     );
-    results.push({ step: "suite-wrong-run", run: await assertQuestionRunVisible(page, "suite wrong retry") });
-    results.push({ step: "suite-wrong-dock", dock: await assertDockHealthy(page, "suite wrong retry") });
+    results.push({ step: "suite-header-wrong-run", run: await assertQuestionRunVisible(page, "suite header wrong retry") });
+    results.push({ step: "suite-header-wrong-dock", dock: await assertDockHealthy(page, "suite header wrong retry") });
+    results.push({ step: "suite-header-wrong-primary-order", primary: await assertSuitePrimaryDockOrder(page, "suite header wrong retry") });
 
     await clickButton(page, 'button[data-action="finish-suite"]:not([disabled])', "finish wrong retry");
     await page.waitForSelector(".suite-report-wrap", { timeout: 7000 });
     results.push({ step: "wrong-retry-report-layout", layout: await assertSuiteReportLayout(page, "wrong retry report") });
 
     if (browserErrors.length) throw new Error(`browser errors: ${browserErrors.join("; ")}`);
-    console.log(JSON.stringify({ ok: true, targetUrl: config.targetUrl, staffId: config.staffId, results }, null, 2));
+    console.log(JSON.stringify({ ok: true, targetUrl: config.targetUrl, staffId: config.staffId, interceptedWrites: apiWrites.length, results }, null, 2));
   } finally {
     await browser.close();
   }

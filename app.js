@@ -73,7 +73,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260709_1308_sync_backoff";
+  const ASSET_VERSION = "20260709_1435_suite_guardrails";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -1804,7 +1804,7 @@
 	      return;
 	    }
 
-	    if (action === "next-suite" || action === "previous-suite" || action === "random-suite") {
+	    if (action === "next-suite" || action === "previous-suite") {
 	      moveSuite(action);
 	      resetViewportScroll();
 	      return;
@@ -2483,13 +2483,8 @@
 	    const suite = state.suite;
 	    const ids = suite ? getVisibleSuiteIds(suite) : [];
 	    if (!suite || suite.submitted || !ids.length) return;
-	    if (action === "random-suite") {
-	      const candidates = ids.map((_, index) => index).filter((index) => index !== suite.index);
-	      suite.index = candidates[Math.floor(Math.random() * candidates.length)] || 0;
-	    } else {
-	      const delta = action === "previous-suite" ? -1 : 1;
-	      suite.index = (suite.index + delta + ids.length) % ids.length;
-	    }
+	    const delta = action === "previous-suite" ? -1 : 1;
+	    suite.index = (suite.index + delta + ids.length) % ids.length;
 	    saveAndRender();
 	  }
 

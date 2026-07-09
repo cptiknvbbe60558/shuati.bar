@@ -3,6 +3,7 @@
 const DEFAULT_URL = "https://shuati.bar";
 const DEFAULT_STAFF_ID = "704001";
 const DEFAULT_CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const STORAGE_KEY = "customer-manager-quiz-state-v1";
 
 function getConfig() {
   return {
@@ -40,6 +41,34 @@ async function clickIfReady(page, selector, label, required = true) {
   await locator.click({ timeout: 5000 });
   await page.waitForTimeout(450);
   return true;
+}
+
+async function installStateApiMock(context) {
+  const apiWrites = [];
+  await context.route("**/api/state/**", async (route, request) => {
+    if (request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, value: {} })
+      });
+      return;
+    }
+    if (["POST", "PUT", "PATCH"].includes(request.method())) {
+      apiWrites.push({
+        method: request.method(),
+        postData: request.postData() || ""
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true })
+      });
+      return;
+    }
+    await route.continue();
+  });
+  return apiWrites;
 }
 
 async function compactText(page, selector) {
@@ -116,6 +145,27 @@ async function waitForFullBank(page) {
   );
 }
 
+async function seedWrongRecord(page) {
+  return page.evaluate((key) => {
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const question = (window.QUIZ_BANK?.questions || []).find((item) => item.type === "单选" && (item.options || []).length >= 2);
+    if (!question) throw new Error("no single-choice question available for wrong-mode smoke seed");
+    const now = new Date().toISOString();
+    state.wrong = state.wrong && typeof state.wrong === "object" ? state.wrong : {};
+    state.wrong[question.id] = {
+      correctStreak: 0,
+      wrongCount: 1,
+      reviewCount: 0,
+      lastCorrect: false,
+      lastAt: now,
+      active: true
+    };
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    return question.id;
+  }, STORAGE_KEY);
+}
+
 async function visibleOptionsMatchBank(page, label) {
   const result = await page.evaluate((scopeLabel) => {
     const questionText = document.querySelector(".question-card .question-text");
@@ -163,6 +213,7 @@ async function run() {
     executablePath: config.chromePath
   });
   const context = await browser.newContext({ ...devices["iPhone 14"], locale: "zh-CN" });
+  const apiWrites = await installStateApiMock(context);
   const page = await context.newPage();
   const browserErrors = [];
   const results = [];
@@ -173,6 +224,9 @@ async function run() {
 
   try {
     await login(page, config.targetUrl, config.staffId);
+    await waitForFullBank(page);
+    const seededWrongId = await seedWrongRecord(page);
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForFullBank(page);
     results.push({ step: "login", dock: await assertDockHealthy(page, "login") });
     results.push({ step: "single-order", order: await visibleOptionsMatchBank(page, "single") });
@@ -210,7 +264,7 @@ async function run() {
     await clickIfReady(page, 'button[data-mode="wrong"]', "open wrong mode");
     const wrongOptionCount = await page.locator(".question-card .option-button").count();
     if (wrongOptionCount < 2) throw new Error("wrong mode after suite is not a normal question view");
-    results.push({ step: "wrong-after-suite", wrongOptionCount, dock: await assertDockHealthy(page, "wrong-after-suite") });
+    results.push({ step: "wrong-after-suite", seededWrongId, wrongOptionCount, dock: await assertDockHealthy(page, "wrong-after-suite") });
 
     await clickIfReady(page, 'button[data-mode="exam300"]', "open mock exam");
     results.push({ step: "exam-home", dock: await assertDockHealthy(page, "exam-home") });
@@ -223,7 +277,7 @@ async function run() {
     if (browserErrors.length) {
       throw new Error(`browser errors: ${browserErrors.join("; ")}`);
     }
-    console.log(JSON.stringify({ ok: true, targetUrl: config.targetUrl, staffId: config.staffId, results }, null, 2));
+    console.log(JSON.stringify({ ok: true, targetUrl: config.targetUrl, staffId: config.staffId, interceptedWrites: apiWrites.length, results }, null, 2));
   } finally {
     await browser.close();
   }
