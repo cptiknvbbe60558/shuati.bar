@@ -119,6 +119,7 @@ async function run() {
   const browser = {
     safari: await runScript("safari-smoke.js"),
     protection: await runScript("protection-smoke.js"),
+    suiteRules: await runScript("suite-rules-smoke.js"),
     mobile: await runScript("mobile-regression-smoke.js"),
     suiteReport: await runScript("suite-report-smoke.js")
   };
@@ -151,6 +152,12 @@ async function run() {
         preserved: browser.protection.preserved,
         serviceWorker: browser.protection.serviceWorker,
         dockNav: browser.protection.dock.nav
+      },
+      suiteRules: {
+        ok: browser.suiteRules.ok,
+        mastery: browser.suiteRules.mastery,
+        suite: browser.suiteRules.suite,
+        interceptedWrites: browser.suiteRules.interceptedWrites
       },
       mobile: {
         ok: browser.mobile.ok,
