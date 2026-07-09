@@ -5992,3 +5992,37 @@ body.practice-fit .practice-dock.suite-dock {
   transform: none !important;
   flex: 0 0 auto !important;
 }
+
+/* 20260709 exam home guard: do not inherit the question-card two-row layout. */
+body.practice-fit .exam-home-screen {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body.practice-fit .exam-home-screen > .exam-home-area {
+  display: block !important;
+  grid-template-rows: none !important;
+  align-content: initial !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 8px !important;
+  scrollbar-width: none;
+}
+
+body.practice-fit .exam-home-screen > .exam-home-area::-webkit-scrollbar {
+  display: none;
+}
+
+body.practice-fit .exam-home-screen > .exam-home-area > * + * {
+  margin-top: 12px !important;
+}

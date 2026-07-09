@@ -49,7 +49,7 @@
   const VALID_MODES = [...MODES, ["search", "搜题"]];
   const PRACTICE_MODES = ["single", "multiple", "judge"];
   const EXAM_KIND_LABELS = {
-    random: "模拟随机",
+    random: "综合模拟",
     single: "模拟单选",
     multiple: "模拟多选",
     judge: "模拟判断"
@@ -73,7 +73,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260709_0205_suite_guard";
+  const ASSET_VERSION = "20260709_1245_exam_home_guard";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
 
@@ -486,7 +486,8 @@
 	      ensureCurrent(modeQuestions);
 	    }
 
-	    const compact = !["exam300", "search"].includes(state.mode);
+    const isExamHome = state.mode === "exam300" && !(state.exam && state.exam.active);
+	    const compact = state.mode === "exam300" ? isExamHome : state.mode !== "search";
     document.body.classList.toggle("practice-fit", compact);
     document.body.classList.toggle("utility-open", Boolean(state.utilityPanel));
 
@@ -671,7 +672,7 @@
   function renderModeContent(baseQuestions, modeQuestions) {
 	    if (bank.isStarter) return renderFullBankLoading(state.mode);
 	    if (state.mode === "suite") return renderSuitePractice();
-	    if (state.mode === "exam300") return `${renderExam300()}${renderModeTabs()}`;
+	    if (state.mode === "exam300") return renderExam300();
 	    if (state.mode === "search") return `${renderSearch(baseQuestions)}${renderModeTabs()}`;
     return renderPractice(modeQuestions);
   }
@@ -1251,48 +1252,53 @@
         counts["判断"] >= 300 ||
         TYPES.every((type) => counts[type] >= 100);
       return `
-        <section class="exam-header exam-hero">
-          <div>
-            <h2>模拟考试</h2>
-            <p>可选单题型 300 题，或随机 300 题；错题优先穿插，1 小时倒计时。</p>
-          </div>
-          <div class="toolbar-group">
-            <button class="solid-button" data-action="start-exam300" ${ready ? "" : "disabled"}>开始</button>
-          </div>
-        </section>
-        <section class="result-card">
-          <div class="stat-grid">
-            <div class="stat"><strong>${wrongStats.active}</strong><span>待复练错题</span></div>
-            <div class="stat"><strong>${wrongStats.onceCorrect}</strong><span>已连对 1 次</span></div>
-            <div class="stat"><strong>${wrongStats.reviewed}</strong><span>已穿插过</span></div>
-            <div class="stat"><strong>300</strong><span>本次题量</span></div>
-          </div>
-        </section>
-        <section class="panel coverage-panel">
-          <div class="section-title">
-            <h3>模拟覆盖</h3>
-            <span>${coverage.total.seen}/${coverage.total.count}</span>
-          </div>
-          <div class="stat-grid">
-            <div class="stat"><strong>${coverage.total.rate}%</strong><span>全题库</span></div>
-            <div class="stat"><strong>${coverage.total.rounds}</strong><span>模拟次数</span></div>
-          </div>
-          <div class="progress-list coverage-list">
-            ${TYPES.map((type) => `
-              <div class="progress-row">
-                <div class="progress-meta">
-                  <span>${type}</span>
-                  <span>${coverage[type].seen}/${coverage[type].count} · ${coverage[type].rate}%</span>
-                </div>
-                <div class="progress-bar" style="--value: ${coverage[type].rate}%"><span></span></div>
+        <section class="practice-screen exam-home-screen">
+          <div class="practice-study-area exam-home-area">
+            <section class="exam-header exam-hero">
+              <div>
+                <h2>模拟考试</h2>
+                <p>可选单题型 300 题，或综合 300 题；错题优先穿插，1 小时倒计时。</p>
               </div>
-            `).join("")}
+              <div class="toolbar-group">
+                <button class="solid-button" data-action="start-exam300" ${ready ? "" : "disabled"}>开始</button>
+              </div>
+            </section>
+            <section class="result-card">
+              <div class="stat-grid">
+                <div class="stat"><strong>${wrongStats.active}</strong><span>待复练错题</span></div>
+                <div class="stat"><strong>${wrongStats.onceCorrect}</strong><span>已连对 1 次</span></div>
+                <div class="stat"><strong>${wrongStats.reviewed}</strong><span>已穿插过</span></div>
+                <div class="stat"><strong>300</strong><span>本次题量</span></div>
+              </div>
+            </section>
+            <section class="panel coverage-panel">
+              <div class="section-title">
+                <h3>模拟覆盖</h3>
+                <span>${coverage.total.seen}/${coverage.total.count}</span>
+              </div>
+              <div class="stat-grid">
+                <div class="stat"><strong>${coverage.total.rate}%</strong><span>全题库</span></div>
+                <div class="stat"><strong>${coverage.total.rounds}</strong><span>模拟次数</span></div>
+              </div>
+              <div class="progress-list coverage-list">
+                ${TYPES.map((type) => `
+                  <div class="progress-row">
+                    <div class="progress-meta">
+                      <span>${type}</span>
+                      <span>${coverage[type].seen}/${coverage[type].count} · ${coverage[type].rate}%</span>
+                    </div>
+                    <div class="progress-bar" style="--value: ${coverage[type].rate}%"><span></span></div>
+                  </div>
+                `).join("")}
+              </div>
+              <div class="toolbar coverage-toolbar">
+                <div class="toolbar-group">
+                  <button class="soft-button" data-action="reset-exam-coverage" ${coverage.total.seen ? "" : "disabled"}>重置覆盖</button>
+                </div>
+              </div>
+            </section>
           </div>
-          <div class="toolbar coverage-toolbar">
-            <div class="toolbar-group">
-              <button class="soft-button" data-action="reset-exam-coverage" ${coverage.total.seen ? "" : "disabled"}>重置覆盖</button>
-            </div>
-          </div>
+          ${renderPracticeDock({ revealed: true, canSubmit: false, disabledNavigation: true })}
         </section>
       `;
     }
@@ -1307,7 +1313,7 @@
       ["single", "模拟单选", "只做单选 300 题", counts["单选"] >= 300],
       ["multiple", "模拟多选", "只做多选 300 题", counts["多选"] >= 300],
       ["judge", "模拟判断", "只做判断 300 题", counts["判断"] >= 300],
-      ["random", "模拟随机", "单选、判断、多选各 100 题", TYPES.every((type) => counts[type] >= 100)]
+      ["random", "综合模拟", "单选、判断、多选各 100 题", TYPES.every((type) => counts[type] >= 100)]
     ];
     return `
       <button class="exam-start-backdrop" data-action="close-exam-start" aria-label="关闭模拟选择" type="button"></button>
@@ -1598,9 +1604,7 @@
         return;
       }
       state.mode = nextMode;
-      if (nextMode === "suite" && state.suite?.submitted) {
-        state.suite = null;
-      }
+      if (nextMode === "suite" || state.suite) state.suite = null;
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.examStartMenuOpen = false;
@@ -1788,9 +1792,7 @@
 	    }
 
 	    if (action === "suite-review-wrong") {
-	      setSuiteReviewMode(target, true);
-	      saveAndRender();
-	      resetViewportScroll();
+	      startSuiteRun(target.dataset.paperId, "wrong");
 	      return;
 	    }
 
