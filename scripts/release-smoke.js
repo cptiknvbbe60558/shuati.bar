@@ -114,6 +114,7 @@ async function run() {
   assert(checks.protectedStateBefore.success, `protected state read failed: ${JSON.stringify(checks.protectedStateBefore)}`);
 
   const browser = {
+    safari: await runScript("safari-smoke.js"),
     protection: await runScript("protection-smoke.js"),
     mobile: await runScript("mobile-regression-smoke.js"),
     suiteReport: await runScript("suite-report-smoke.js")
@@ -129,6 +130,13 @@ async function run() {
     staffId,
     checks,
     browser: {
+      safari: {
+        ok: browser.safari.ok,
+        title: browser.safari.title,
+        questionCount: browser.safari.questionCount,
+        serviceWorker: browser.safari.serviceWorker,
+        interceptedWrites: browser.safari.interceptedWrites
+      },
       protection: {
         ok: browser.protection.ok,
         preserved: browser.protection.preserved,
