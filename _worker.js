@@ -85,12 +85,15 @@ async function handleStateApi(request, env, url) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return json({ success: false, error: "invalid_payload" }, 400, headers);
     }
-    await env.SHUATI_STATE.put(key, JSON.stringify(payload), {
-      metadata: {
+    try {
+      await env.SHUATI_STATE.put(key, JSON.stringify(payload));
+    } catch (error) {
+      console.error("state_write_failed", {
         staffId,
-        updatedAt: new Date().toISOString()
-      }
-    });
+        message: error?.message || String(error)
+      });
+      return json({ success: false, error: "state_write_failed" }, 200, headers);
+    }
     return json({ success: true }, 200, headers);
   }
 
