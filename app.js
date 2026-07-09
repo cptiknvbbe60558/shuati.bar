@@ -73,9 +73,12 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260709_1245_exam_home_guard";
+  const ASSET_VERSION = "20260709_1308_sync_backoff";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
+  const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
+  const PROTECTED_SYNC_MIN_INTERVAL_MS = 120000;
+  const PROTECTED_SYNC_RETRY_MS = 30 * 60 * 1000;
 
   let questions = bank.questions || [];
   let categories = bank.categories || [];
@@ -89,6 +92,8 @@
   let remoteSyncTimer = null;
   let remoteSyncReady = false;
   let remoteSyncStaffId = "";
+  let remoteSyncLastAttemptAt = 0;
+  let remoteSyncBackoffUntil = 0;
   let protectedSyncDirty = false;
   let protectedSyncRevision = 0;
   let examTimer = null;
@@ -301,8 +306,7 @@
     } finally {
       if (state.staffId === staffId) {
         remoteSyncReady = true;
-        markProtectedSyncDirty();
-        scheduleRemoteStateSave();
+        if (protectedSyncDirty) scheduleRemoteStateSave();
       }
     }
   }
@@ -321,10 +325,13 @@
     materializeFavoritesFromSync();
   }
 
-  function scheduleRemoteStateSave() {
+  function scheduleRemoteStateSave(delay = PROTECTED_SYNC_DEBOUNCE_MS) {
     if (!remoteSyncReady || !isVerifiedStaffId(state.staffId)) return;
     if (remoteSyncTimer) clearTimeout(remoteSyncTimer);
-    remoteSyncTimer = setTimeout(saveRemoteState, 450);
+    const sinceLastAttempt = remoteSyncLastAttemptAt ? Date.now() - remoteSyncLastAttemptAt : Infinity;
+    const throttleDelay = Math.max(0, PROTECTED_SYNC_MIN_INTERVAL_MS - sinceLastAttempt);
+    const backoffDelay = Math.max(0, remoteSyncBackoffUntil - Date.now());
+    remoteSyncTimer = setTimeout(saveRemoteState, Math.max(delay, throttleDelay, backoffDelay));
   }
 
   async function saveRemoteState() {
@@ -338,6 +345,7 @@
     ) return;
     const revision = protectedSyncRevision;
     try {
+      remoteSyncLastAttemptAt = Date.now();
       const beforeMerge = protectedStateSignature();
       const cloudPayload = await readProtectedCloudState(staffId);
       if (state.staffId !== staffId) return;
@@ -345,15 +353,18 @@
       const payload = buildProtectedCloudPayload();
       await writeProtectedCloudState(staffId, payload);
       if (state.staffId === staffId) {
+        remoteSyncBackoffUntil = 0;
         persistLocalState(createStorageSnapshot());
         if (revision === protectedSyncRevision) protectedSyncDirty = false;
         const afterMerge = protectedStateSignature();
         if (beforeMerge !== afterMerge) render();
         if (protectedSyncDirty) scheduleRemoteStateSave();
       }
-    } catch {
+    } catch (error) {
       if (state.staffId === staffId && protectedSyncDirty && !remoteSyncTimer) {
-        remoteSyncTimer = setTimeout(saveRemoteState, 10000);
+        const retryDelay = Number(error?.retryAfterMs) || PROTECTED_SYNC_RETRY_MS;
+        remoteSyncBackoffUntil = Date.now() + retryDelay;
+        scheduleRemoteStateSave(retryDelay);
       }
     }
   }
@@ -420,9 +431,17 @@
         body: JSON.stringify(payload)
       }
     );
-    if (!response.ok) throw new Error("protected_cloud_write_failed");
-    const result = await response.json();
-    if (!result?.success) throw new Error("protected_cloud_write_rejected");
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+    if (!response.ok || !result?.success) {
+      const error = new Error(result?.error || "protected_cloud_write_failed");
+      error.retryAfterMs = Number(result?.retryAfterMs) || 0;
+      throw error;
+    }
   }
 
   function sanitizeState() {

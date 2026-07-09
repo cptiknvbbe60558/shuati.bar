@@ -92,7 +92,11 @@ async function handleStateApi(request, env, url) {
         staffId,
         message: error?.message || String(error)
       });
-      return json({ success: false, error: "state_write_failed" }, 200, headers);
+      return json({
+        success: false,
+        error: "state_write_failed",
+        retryAfterMs: 30 * 60 * 1000
+      }, 200, headers);
     }
     return json({ success: true }, 200, headers);
   }
