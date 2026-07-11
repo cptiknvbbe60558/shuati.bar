@@ -6317,3 +6317,222 @@ body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button {
     font-size: 8px;
   }
 }
+
+/* Neutral glass final precedence. Keep this last so legacy themes cannot leak through. */
+:root {
+  --bg: #eceef1;
+  --surface: rgba(249, 250, 251, 0.72);
+  --surface-2: rgba(236, 238, 241, 0.66);
+  --line: rgba(50, 50, 55, 0.12);
+  --text: #1d1d1f;
+  --muted: rgba(60, 60, 67, 0.66);
+  --blue: #515258;
+  --glass-bg: rgba(247, 248, 250, 0.62);
+  --glass-bg-strong: rgba(252, 252, 253, 0.76);
+  --glass-line: rgba(255, 255, 255, 0.78);
+  --glass-shadow: 0 24px 70px rgba(36, 38, 44, 0.14);
+}
+
+html,
+body {
+  background: #eceef1;
+}
+
+body {
+  background: linear-gradient(180deg, #f8f9fa 0%, #eef0f3 48%, #e5e8ec 100%);
+}
+
+body::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.06) 42%, rgba(225, 228, 233, 0.18));
+}
+
+.verify-card,
+.panel,
+.question-card,
+.result-card,
+.search-card,
+.exam-header,
+.search-header,
+.exam-grid,
+.suite-home-card,
+.suite-stats-card,
+.suite-paper-card,
+.suite-report-header,
+.suite-score-card,
+.exam-review-card {
+  border-color: rgba(255, 255, 255, 0.78);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(242, 243, 246, 0.54)),
+    rgba(247, 248, 250, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 -1px 0 rgba(90, 92, 98, 0.04),
+    0 22px 64px rgba(37, 39, 45, 0.12);
+  -webkit-backdrop-filter: blur(32px) saturate(1.18);
+  backdrop-filter: blur(32px) saturate(1.18);
+}
+
+.category-select,
+.header-type-tab,
+.badge,
+.chip,
+.number-button,
+.badge.blue,
+.badge.actual-category-badge,
+.category-badge {
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(226, 228, 232, 0.74);
+  color: rgba(45, 46, 51, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.header-type-tab.active,
+.chip.active,
+.tab-button.active,
+.memorize-button.active,
+.practice-dock .tab-button.active,
+body.practice-fit .practice-dock .tab-button.active,
+.practice-dock .memorize-button.active,
+body.practice-fit .practice-dock .memorize-button.active {
+  border-color: rgba(45, 46, 51, 0.3);
+  background: linear-gradient(180deg, rgba(82, 83, 88, 0.96), rgba(45, 46, 50, 0.98));
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 20px rgba(42, 43, 48, 0.2);
+}
+
+.soft-button,
+.tab-button,
+.dock-menu-button,
+.ghost-button {
+  border-color: rgba(60, 60, 67, 0.12);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.76), rgba(232, 234, 238, 0.52)),
+    rgba(244, 245, 247, 0.62);
+  color: rgba(29, 29, 31, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 6px 18px rgba(40, 42, 48, 0.07);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.solid-button {
+  border-color: rgba(45, 46, 51, 0.3);
+  background: linear-gradient(180deg, rgba(76, 77, 82, 0.96), rgba(43, 44, 48, 0.98));
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 9px 22px rgba(42, 43, 48, 0.18);
+}
+
+.soft-button:disabled,
+.solid-button:disabled,
+.tab-button:disabled {
+  border-color: rgba(60, 60, 67, 0.08);
+  background: rgba(229, 231, 234, 0.52);
+  color: rgba(60, 60, 67, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  opacity: 1;
+}
+
+.option-button,
+body.practice-fit .practice-study-area .option-button,
+body.practice-fit .density-medium .option-button,
+body.practice-fit .density-tight .option-button,
+body.practice-fit .density-ultra .option-button,
+body.practice-fit .density-micro .option-button {
+  border-color: rgba(60, 60, 67, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(239, 240, 243, 0.5)),
+    rgba(250, 250, 251, 0.64);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 6px 18px rgba(40, 42, 48, 0.055);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.option-key,
+body.practice-fit .practice-study-area .option-key,
+body.practice-fit .density-tight .option-key,
+body.practice-fit .density-ultra .option-key,
+body.practice-fit .density-micro .option-key {
+  background: rgba(216, 218, 223, 0.72);
+  color: rgba(60, 60, 67, 0.7);
+}
+
+.option-button.selected:not(.correct):not(.wrong) {
+  border-color: rgba(58, 58, 60, 0.3) !important;
+  background: linear-gradient(145deg, rgba(242, 243, 245, 0.92), rgba(218, 220, 224, 0.68)) !important;
+}
+
+.option-button.selected:not(.correct):not(.wrong) .option-key {
+  background: #4a4a4e !important;
+  color: #fff !important;
+}
+
+.favorite-star,
+body.practice-fit .favorite-star {
+  border-color: transparent;
+  background: transparent;
+  color: rgba(60, 60, 67, 0.38);
+  box-shadow: none;
+}
+
+.favorite-star.active,
+body.practice-fit .favorite-star.active {
+  border-color: transparent;
+  background: transparent;
+  color: #3a3a3c;
+  box-shadow: none;
+}
+
+body.practice-fit .answer-panel-outside,
+.answer-panel-outside {
+  border-color: rgba(255, 255, 255, 0.8);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(233, 235, 239, 0.48)),
+    rgba(246, 247, 249, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 14px 38px rgba(40, 42, 48, 0.09);
+  -webkit-backdrop-filter: blur(28px) saturate(1.08);
+  backdrop-filter: blur(28px) saturate(1.08);
+}
+
+body.practice-fit .practice-dock,
+.practice-dock {
+  border-color: rgba(255, 255, 255, 0.84);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(229, 231, 235, 0.58)),
+    rgba(245, 246, 248, 0.66);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(80, 82, 88, 0.05),
+    0 22px 58px rgba(39, 41, 47, 0.16);
+  -webkit-backdrop-filter: blur(34px) saturate(1.12);
+  backdrop-filter: blur(34px) saturate(1.12);
+}
+
+.utility-backdrop {
+  background: rgba(48, 49, 54, 0.18);
+  -webkit-backdrop-filter: blur(12px) saturate(0.9);
+  backdrop-filter: blur(12px) saturate(0.9);
+}
+
+.utility-sheet,
+.exam-start-sheet {
+  border-color: rgba(255, 255, 255, 0.82);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.82), rgba(230, 232, 236, 0.66)),
+    rgba(245, 246, 248, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 -12px 54px rgba(38, 40, 46, 0.18);
+  -webkit-backdrop-filter: blur(38px) saturate(1.12);
+  backdrop-filter: blur(38px) saturate(1.12);
+}
