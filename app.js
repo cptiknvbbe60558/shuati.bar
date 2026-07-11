@@ -36,6 +36,7 @@
     "判断": "judge"
   };
   const MODES = [
+    ["practice", "练习"],
     ["single", "单选"],
     ["multiple", "多选"],
     ["judge", "判断"],
@@ -47,7 +48,7 @@
   const HEADER_TYPE_MODES = MODES.filter(([mode]) => TYPE_MODE_MAP[mode]);
   const DOCK_MODES = MODES.filter(([mode]) => !TYPE_MODE_MAP[mode]);
   const VALID_MODES = [...MODES, ["search", "搜题"]];
-  const PRACTICE_MODES = ["single", "multiple", "judge"];
+  const PRACTICE_MODES = ["practice", "single", "multiple", "judge"];
   const EXAM_KIND_LABELS = {
     random: "综合模拟",
     single: "模拟单选",
@@ -73,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260709_1435_suite_guardrails";
+  const ASSET_VERSION = "20260711_1915_practice_polish";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -103,7 +104,7 @@
 
   const defaultState = {
     staffId: "",
-    mode: "single",
+    mode: "practice",
     selectedCategories: categories.map((category) => category.id),
     selectedTypes: TYPES,
     query: "",
@@ -125,7 +126,7 @@
     studyMode: false,
     specialIndexes: {},
     examSize: 50,
-	    lastPracticeMode: "single",
+	    lastPracticeMode: "practice",
 	    lastPracticeId: questions[0] ? questions[0].id : "",
 	    exam: null,
 	    suitePapers: [],
@@ -454,7 +455,6 @@
     }
     state.selectedTypes = (state.selectedTypes || []).filter((type) => TYPES.includes(type));
     if (!state.selectedTypes.length) state.selectedTypes = [...TYPES];
-    if (state.mode === "practice") state.mode = "single";
     if (state.mode === "exam") state.mode = "exam300";
     if (state.mode === "memory") state.mode = "single";
 	    if (state.mode === "judgeCorrect") state.mode = "judge";
@@ -466,7 +466,7 @@
     state.categoryMenuOpen = Boolean(state.categoryMenuOpen);
     state.examStartMenuOpen = Boolean(state.examStartMenuOpen);
     state.studyMode = Boolean(state.studyMode);
-    if (!PRACTICE_MODES.includes(state.lastPracticeMode)) state.lastPracticeMode = "single";
+    if (!PRACTICE_MODES.includes(state.lastPracticeMode)) state.lastPracticeMode = "practice";
     syncSelectedTypesForMode();
     if (!questionById.has(state.currentId) && questions[0] && !bank.isStarter) {
       state.currentId = questions[0].id;
@@ -702,6 +702,7 @@
       single: `完整题库加载后进入单选 ${FULL_TYPE_COUNTS.single} 题。`,
       multiple: `完整题库加载后进入多选 ${FULL_TYPE_COUNTS.multiple} 题。`,
       judge: `完整题库加载后进入判断 ${FULL_TYPE_COUNTS.judge} 题。`,
+	      practice: "完整题库加载后按原题库顺序连续练习单选、多选和判断。",
 	      suite: "完整题库加载后再生成强化练习。",
 	      exam300: "完整题库加载后再开始模拟考试。",
       wrong: "完整题库加载后再查看错题。",
@@ -878,6 +879,7 @@
         <button class="tab-button" data-action="retry-wrong">错题重做</button>
         <button class="${tabClass("suite")}" data-action="set-mode" data-mode="suite">强化练习</button>
         <button class="${tabClass("exam300")}" data-action="set-mode" data-mode="exam300">模拟考试</button>
+        <button class="${tabClass("practice")}" data-action="set-mode" data-mode="practice">练习</button>
         <button class="tab-button dock-menu-button dock-text-button${utilityActive}" data-action="toggle-utility-panel" aria-label="其他" aria-pressed="${state.utilityPanel ? "true" : "false"}">其他</button>
       </div>
     `;
@@ -3053,6 +3055,9 @@
   }
 
   function modeCount(mode) {
+    if (mode === "practice") {
+      return bank.isStarter ? bank.totalQuestions || questions.length : questions.length;
+    }
     if (TYPE_MODE_MAP[mode]) {
       if (bank.isStarter && FULL_TYPE_COUNTS[mode]) return FULL_TYPE_COUNTS[mode];
       return questions.filter((question) => question.type === TYPE_MODE_MAP[mode]).length;
@@ -3496,7 +3501,7 @@
   function restorePracticeLocation() {
     const mode = PRACTICE_MODES.includes(state.lastPracticeMode)
       ? state.lastPracticeMode
-      : "single";
+      : "practice";
     state.mode = mode;
     if (state.lastPracticeId) state.currentId = state.lastPracticeId;
     syncSelectedTypesForMode();
@@ -3504,6 +3509,10 @@
   }
 
   function syncSelectedTypesForMode() {
+    if (state.mode === "practice") {
+      state.selectedTypes = [...TYPES];
+      return;
+    }
     if (TYPE_MODE_MAP[state.mode]) {
       state.selectedTypes = [TYPE_MODE_MAP[state.mode]];
     }

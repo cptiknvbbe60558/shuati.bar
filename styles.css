@@ -6026,3 +6026,294 @@ body.practice-fit .exam-home-screen > .exam-home-area::-webkit-scrollbar {
 body.practice-fit .exam-home-screen > .exam-home-area > * + * {
   margin-top: 12px !important;
 }
+
+/* 20260711 product polish: calm study surface, stable typography and one-line navigation. */
+:root {
+  --bg: #f4f5f7;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-2: rgba(247, 248, 250, 0.84);
+  --line: rgba(60, 60, 67, 0.13);
+  --text: #161719;
+  --muted: rgba(60, 60, 67, 0.68);
+  --blue: #4aa8e6;
+  --green: #28a95b;
+  --green-2: #32b866;
+  --ok: #28a95b;
+  --coral: #e34d59;
+  --bad: #e34d59;
+  --glass-line: rgba(255, 255, 255, 0.76);
+  --glass-shadow: 0 20px 52px rgba(36, 43, 54, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+html {
+  background: #f4f5f7;
+}
+
+body {
+  background:
+    linear-gradient(180deg, #fbfcfd 0%, #f3f5f8 46%, #edf1f6 100%);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(235, 241, 248, 0.18));
+}
+
+.verify-card,
+.panel,
+.question-card,
+.result-card,
+.search-card,
+.exam-header,
+.search-header,
+.exam-grid,
+.suite-home-card,
+.suite-stats-card,
+.suite-paper-card,
+.suite-report-header,
+.suite-score-card {
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 18px 52px rgba(31, 38, 48, 0.11);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  backdrop-filter: blur(28px) saturate(1.35);
+}
+
+.category-select,
+.header-type-tab,
+.badge.actual-category-badge {
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(246, 247, 250, 0.9);
+  color: rgba(28, 29, 32, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.header-type-tab.active,
+.tab-button.active,
+.memorize-button.active {
+  border-color: rgba(74, 168, 230, 0.36);
+  background: rgba(190, 229, 252, 0.92);
+  color: #07577e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 7px 18px rgba(74, 168, 230, 0.2);
+}
+
+.solid-button {
+  border: 1px solid rgba(74, 168, 230, 0.28);
+  background: #8fd0f3;
+  color: #083e5b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 8px 18px rgba(74, 168, 230, 0.18);
+}
+
+.soft-button,
+.tab-button,
+.dock-menu-button {
+  border-color: rgba(60, 60, 67, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  color: rgba(24, 25, 28, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 5px 14px rgba(35, 42, 52, 0.06);
+}
+
+body.practice-fit .practice-study-area .question-card {
+  align-self: stretch;
+  height: 100% !important;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 30px;
+  padding: 15px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+body.practice-fit .practice-study-area .question-card::-webkit-scrollbar {
+  display: none;
+}
+
+body.practice-fit .practice-study-area .question-text,
+body.practice-fit .density-medium .question-text,
+body.practice-fit .density-tight .question-text,
+body.practice-fit .density-ultra .question-text,
+body.practice-fit .density-micro .question-text {
+  margin-top: 10px;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.46;
+}
+
+body.practice-fit .practice-study-area .options,
+body.practice-fit .density-tight .options,
+body.practice-fit .density-ultra .options,
+body.practice-fit .density-micro .options {
+  gap: 8px;
+  margin-top: 13px;
+}
+
+body.practice-fit .practice-study-area .option-button,
+body.practice-fit .density-medium .option-button,
+body.practice-fit .density-tight .option-button,
+body.practice-fit .density-ultra .option-button,
+body.practice-fit .density-micro .option-button {
+  grid-template-columns: 32px minmax(0, 1fr);
+  min-height: 48px;
+  padding: 7px 11px;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 5px 14px rgba(35, 42, 52, 0.045);
+}
+
+body.practice-fit .practice-study-area .option-key,
+body.practice-fit .density-tight .option-key,
+body.practice-fit .density-ultra .option-key,
+body.practice-fit .density-micro .option-key {
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: rgba(232, 234, 238, 0.86);
+  color: rgba(60, 60, 67, 0.72);
+  font-size: 13px;
+}
+
+body.practice-fit .practice-study-area .option-text,
+body.practice-fit .density-tight .option-text,
+body.practice-fit .density-ultra .option-text,
+body.practice-fit .density-micro .option-text {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.38;
+}
+
+.option-button.selected {
+  border-color: rgba(74, 168, 230, 0.5) !important;
+  background: rgba(207, 235, 252, 0.78) !important;
+}
+
+.option-button.selected .option-key {
+  background: #67b9e8 !important;
+  color: #fff !important;
+}
+
+.option-button.correct {
+  border-color: rgba(40, 169, 91, 0.36) !important;
+  background: rgba(212, 244, 223, 0.76) !important;
+}
+
+.option-button.correct .option-key {
+  background: #32b866 !important;
+  color: #fff !important;
+}
+
+.option-button.wrong {
+  border-color: rgba(227, 77, 89, 0.34) !important;
+  background: rgba(255, 224, 227, 0.72) !important;
+}
+
+.option-button.wrong .option-key {
+  background: #e85d68 !important;
+  color: #fff !important;
+}
+
+body.practice-fit .answer-panel-outside {
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 12px 32px rgba(35, 42, 52, 0.08);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  backdrop-filter: blur(24px) saturate(1.25);
+}
+
+body.practice-fit .practice-dock {
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 27px;
+  background: rgba(251, 252, 253, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 20px 50px rgba(28, 36, 48, 0.14);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+}
+
+.dock-nav-row,
+body.practice-fit .dock-nav-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dock-nav-row > .tab-button,
+body.practice-fit .dock-nav-row > .tab-button {
+  min-height: 40px;
+  padding: 0 1px;
+  border-radius: 18px;
+  font-size: 9.6px;
+  font-weight: 650;
+}
+
+.dock-nav-row > .tab-button[data-mode="suite"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+.dock-nav-row > .tab-button[data-mode="exam300"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+  font-size: 8.7px;
+}
+
+.practice-dock .practice-toolbar.dock-primary-row button,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button {
+  font-weight: 650;
+}
+
+.question-status-empty {
+  visibility: hidden;
+}
+
+.answer-compare-correct strong,
+.answer-compare-mine-correct strong {
+  color: #28a95b;
+}
+
+.answer-compare-mine-wrong strong {
+  color: #e34d59;
+}
+
+@media (max-width: 380px) {
+  body.practice-fit .practice-study-area .question-text,
+  body.practice-fit .density-medium .question-text,
+  body.practice-fit .density-tight .question-text,
+  body.practice-fit .density-ultra .question-text,
+  body.practice-fit .density-micro .question-text {
+    font-size: 15px;
+  }
+
+  body.practice-fit .practice-study-area .option-text,
+  body.practice-fit .density-tight .option-text,
+  body.practice-fit .density-ultra .option-text,
+  body.practice-fit .density-micro .option-text {
+    font-size: 13.4px;
+  }
+
+  .dock-nav-row > .tab-button,
+  body.practice-fit .dock-nav-row > .tab-button {
+    font-size: 8.8px;
+  }
+
+  .dock-nav-row > .tab-button[data-mode="suite"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+  .dock-nav-row > .tab-button[data-mode="exam300"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+    font-size: 8px;
+  }
+}

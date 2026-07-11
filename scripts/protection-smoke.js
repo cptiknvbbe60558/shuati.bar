@@ -185,7 +185,7 @@ async function assertDockShape(page) {
     `primary dock actions changed: ${JSON.stringify(dock.primary)}`
   );
   assert(
-    JSON.stringify(dock.nav) === JSON.stringify(["错题", "错题重做", "强化练习", "模拟考试", "其他"]),
+    JSON.stringify(dock.nav) === JSON.stringify(["错题", "错题重做", "强化练习", "模拟考试", "练习", "其他"]),
     `dock nav labels changed: ${JSON.stringify(dock.nav)}`
   );
   for (const removed of ["随机", "判断正确", "全选", "套题练习"]) {

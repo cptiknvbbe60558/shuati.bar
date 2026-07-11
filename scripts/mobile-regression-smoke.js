@@ -123,7 +123,148 @@ async function assertDockHealthy(page, label) {
   for (const removed of ["判断正确", "全选", "随机"]) {
     if (texts.includes(removed)) throw new Error(`${label}: removed dock entry still visible: ${removed}`);
   }
+  const navButtons = await page.evaluate(() => [...document.querySelectorAll(".dock-nav-row > button")].map((button) => {
+    const rect = button.getBoundingClientRect();
+    return {
+      text: button.innerText.trim() || button.getAttribute("aria-label") || "",
+      action: button.dataset.action || "",
+      disabled: button.disabled,
+      visible: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
+      rect: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      }
+    };
+  }));
+  if (navButtons.length !== 6) {
+    throw new Error(`${label}: expected six dock navigation buttons: ${JSON.stringify(navButtons)}`);
+  }
+  if (new Set(navButtons.map((button) => button.rect.y)).size !== 1) {
+    throw new Error(`${label}: dock navigation wrapped to multiple rows: ${JSON.stringify(navButtons)}`);
+  }
   return snapshot;
+}
+
+async function assertContinuousPracticeOrder(page, label) {
+  const before = await page.evaluate((key) => {
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const ids = (window.QUIZ_BANK?.questions || []).map((question) => question.id);
+    return {
+      mode: state.mode,
+      currentId: state.currentId,
+      index: ids.indexOf(state.currentId),
+      total: ids.length,
+      selectedTypes: state.selectedTypes || []
+    };
+  }, STORAGE_KEY);
+  if (before.mode !== "practice") throw new Error(`${label}: mode is not practice: ${JSON.stringify(before)}`);
+  if (before.total < 3000) throw new Error(`${label}: full bank is not active: ${JSON.stringify(before)}`);
+  if (JSON.stringify(before.selectedTypes) !== JSON.stringify(["单选", "多选", "判断"])) {
+    throw new Error(`${label}: continuous practice does not include all types: ${JSON.stringify(before)}`);
+  }
+  await clickIfReady(page, 'button[data-action="next-question"]:not([disabled])', `${label} next question`);
+  const after = await page.evaluate((key) => {
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const ids = (window.QUIZ_BANK?.questions || []).map((question) => question.id);
+    return { currentId: state.currentId, index: ids.indexOf(state.currentId) };
+  }, STORAGE_KEY);
+  if (after.index !== before.index + 1) {
+    throw new Error(`${label}: next question did not follow source-bank order: ${JSON.stringify({ before, after })}`);
+  }
+  return { before, after };
+}
+
+async function assertPracticeTypeTransition(page) {
+  const seeded = await page.evaluate((key) => {
+    const bank = window.QUIZ_BANK?.questions || [];
+    const transitionIndex = bank.findIndex((question, index) => index < bank.length - 1 && question.type !== bank[index + 1].type);
+    if (transitionIndex < 0) throw new Error("source bank has no adjacent type transition");
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    state.mode = "practice";
+    state.lastPracticeMode = "practice";
+    state.currentId = bank[transitionIndex].id;
+    state.lastPracticeId = bank[transitionIndex].id;
+    state.selectedTypes = ["单选", "多选", "判断"];
+    state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    return {
+      beforeId: bank[transitionIndex].id,
+      beforeType: bank[transitionIndex].type,
+      afterId: bank[transitionIndex + 1].id,
+      afterType: bank[transitionIndex + 1].type,
+      transitionIndex
+    };
+  }, STORAGE_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForFullBank(page);
+  await clickIfReady(page, 'button[data-action="next-question"]:not([disabled])', "cross type boundary");
+  const actual = await page.evaluate((key) => {
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const question = (window.QUIZ_BANK?.questions || []).find((item) => item.id === state.currentId);
+    return { id: state.currentId, type: question?.type || "" };
+  }, STORAGE_KEY);
+  if (actual.id !== seeded.afterId || actual.type !== seeded.afterType) {
+    throw new Error(`continuous practice failed at a type boundary: ${JSON.stringify({ seeded, actual })}`);
+  }
+  return { seeded, actual };
+}
+
+async function assertLongQuestionLayout(page) {
+  const seeded = await page.evaluate((key) => {
+    const bank = window.QUIZ_BANK?.questions || [];
+    const score = (question) => String(question.question || "").length
+      + (question.options || []).reduce((sum, option) => sum + String(option.text || "").length, 0);
+    const question = [...bank].sort((left, right) => score(right) - score(left))[0];
+    if (!question) throw new Error("source bank is empty");
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    state.mode = "practice";
+    state.lastPracticeMode = "practice";
+    state.currentId = question.id;
+    state.lastPracticeId = question.id;
+    state.selectedTypes = ["单选", "多选", "判断"];
+    state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
+    state.studyMode = false;
+    state.revealed = { ...(state.revealed || {}), [question.id]: false };
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    return { id: question.id, type: question.type, contentLength: score(question) };
+  }, STORAGE_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForFullBank(page);
+  const layout = await page.evaluate(() => {
+    const card = document.querySelector(".question-card");
+    const dock = document.querySelector(".practice-dock");
+    const question = document.querySelector(".question-text");
+    const option = document.querySelector(".option-text");
+    const nav = [...document.querySelectorAll(".dock-nav-row > button")];
+    const cardRect = card?.getBoundingClientRect();
+    const dockRect = dock?.getBoundingClientRect();
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+      cardBeforeDock: Boolean(cardRect && dockRect && cardRect.bottom <= dockRect.top),
+      cardOverflowY: card ? getComputedStyle(card).overflowY : "",
+      cardScrollable: Boolean(card && card.scrollHeight > card.clientHeight),
+      questionFont: question ? getComputedStyle(question).fontSize : "",
+      optionFont: option ? getComputedStyle(option).fontSize : "",
+      navRows: new Set(nav.map((button) => Math.round(button.getBoundingClientRect().y))).size,
+      navAllVisible: nav.every((button) => {
+        const rect = button.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth;
+      })
+    };
+  });
+  if (layout.horizontalOverflow) throw new Error(`long question causes horizontal overflow: ${JSON.stringify(layout)}`);
+  if (!layout.cardBeforeDock) throw new Error(`long question overlaps the dock: ${JSON.stringify(layout)}`);
+  if (layout.cardOverflowY !== "auto") throw new Error(`long question card is not its own scroll owner: ${JSON.stringify(layout)}`);
+  if (layout.questionFont !== "16px" || layout.optionFont !== "14px") {
+    throw new Error(`long question changed typography: ${JSON.stringify(layout)}`);
+  }
+  if (layout.navRows !== 1 || !layout.navAllVisible) throw new Error(`long question broke dock layout: ${JSON.stringify(layout)}`);
+  return { seeded, layout };
 }
 
 async function login(page, targetUrl, staffId) {
@@ -229,6 +370,12 @@ async function run() {
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForFullBank(page);
     results.push({ step: "login", dock: await assertDockHealthy(page, "login") });
+    await clickIfReady(page, 'button[data-mode="practice"]', "open continuous practice");
+    results.push({ step: "practice-order", order: await visibleOptionsMatchBank(page, "practice"), sequence: await assertContinuousPracticeOrder(page, "practice") });
+    results.push({ step: "practice-type-transition", transition: await assertPracticeTypeTransition(page) });
+    results.push({ step: "long-question-layout", audit: await assertLongQuestionLayout(page), dock: await assertDockHealthy(page, "long-question-layout") });
+
+    await clickIfReady(page, 'button[data-mode="single"]', "open single mode");
     results.push({ step: "single-order", order: await visibleOptionsMatchBank(page, "single") });
 
     const select = page.locator('select[data-action="category-select"]').first();
@@ -268,6 +415,18 @@ async function run() {
 
     await clickIfReady(page, 'button[data-mode="exam300"]', "open mock exam");
     results.push({ step: "exam-home", dock: await assertDockHealthy(page, "exam-home") });
+
+    await clickIfReady(page, 'button[data-mode="practice"]', "return to continuous practice from exam home");
+    const restoredOptionCount = await page.locator(".question-card .option-button").count();
+    if (restoredOptionCount < 2) throw new Error("returning from exam home did not restore the practice question card");
+    results.push({
+      step: "practice-after-exam",
+      restoredOptionCount,
+      order: await visibleOptionsMatchBank(page, "practice-after-exam"),
+      dock: await assertDockHealthy(page, "practice-after-exam")
+    });
+
+    await clickIfReady(page, 'button[data-mode="exam300"]', "reopen mock exam");
     await clickIfReady(page, 'button[data-action="start-exam300"]:not([disabled])', "open exam start menu");
     if (!(await page.locator(".exam-start-sheet").count())) throw new Error("exam start menu did not open");
     await clickIfReady(page, 'button[data-action="start-exam-kind"][data-kind="random"]:not([disabled])', "start comprehensive mock exam");
