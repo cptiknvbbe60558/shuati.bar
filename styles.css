@@ -195,17 +195,6 @@ button {
     color 0.15s ease;
 }
 
-.tab-button:active,
-.soft-button:active,
-.solid-button:active,
-.danger-button:active,
-.ghost-button:active,
-.chip:active,
-.option-button:active,
-.number-button:active {
-  transform: translateY(1px);
-}
-
 .tab-button {
   border: 1px solid rgba(154, 164, 153, 0.32);
   background:
@@ -2989,10 +2978,6 @@ body::after {
   display: none !important;
 }
 
-.favorite-star:active {
-  transform: scale(0.92);
-}
-
 .favorite-star.active {
   background: transparent !important;
   color: #ffb700;
@@ -4268,19 +4253,6 @@ body.utility-open .practice-dock {
     max-height: min(46svh, 360px);
     border-radius: 24px;
   }
-}
-
-button {
-  -webkit-tap-highlight-color: transparent;
-  transform-origin: center;
-}
-
-button.haptic-press,
-button:active:not(:disabled) {
-  transform: translateY(1px) scale(0.92) !important;
-  filter: brightness(0.9) saturate(0.92);
-  box-shadow: inset 0 2px 5px rgba(38, 42, 48, 0.14) !important;
-  transition: transform 55ms ease-out, filter 55ms ease-out, box-shadow 55ms ease-out !important;
 }
 
 /* Final answer-state and Safari scroll-restoration fixes. */
@@ -6714,11 +6686,6 @@ body.practice-fit .favorite-star {
   transition: transform 160ms ease, color 160ms ease;
 }
 
-.favorite-star:active,
-body.practice-fit .favorite-star:active {
-  transform: scale(0.9);
-}
-
 .favorite-star.active,
 body.practice-fit .favorite-star.active {
   color: #34383f;
@@ -6782,10 +6749,6 @@ body.practice-fit .density-micro .option-button {
   -webkit-backdrop-filter: blur(16px) saturate(1.03);
   backdrop-filter: blur(16px) saturate(1.03);
   transition: transform 130ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-}
-
-.option-button:active {
-  transform: scale(0.986);
 }
 
 .option-key,

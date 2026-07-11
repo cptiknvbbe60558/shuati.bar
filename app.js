@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-const ASSET_VERSION = "20260711_1230_resume_haptics";
+const ASSET_VERSION = "20260711_1245_no_feedback";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -148,7 +148,6 @@ const ASSET_VERSION = "20260711_1230_resume_haptics";
   app.addEventListener("input", onInput);
   app.addEventListener("change", onChange);
   app.addEventListener("submit", onSubmit);
-  document.addEventListener("pointerdown", onButtonPointerDown, { passive: true });
   document.addEventListener(
     "dblclick",
     (event) => {
@@ -1574,7 +1573,6 @@ const ASSET_VERSION = "20260711_1230_resume_haptics";
     const target = clickTarget?.closest?.("[data-action]");
     if (!target) return;
     const action = target.dataset.action;
-    if (event.detail === 0) triggerStrongHaptic();
 
     if (action === "verify-staff") {
       verifyStaffId();
@@ -1996,25 +1994,6 @@ const ASSET_VERSION = "20260711_1230_resume_haptics";
       saveState();
       const label = target.closest(".panel")?.querySelector(".section-title span");
       if (label) label.textContent = target.value ? "已保存" : "空";
-    }
-  }
-
-  function onButtonPointerDown(event) {
-    let pointerTarget = event.target;
-    if (pointerTarget && pointerTarget.nodeType === 3) pointerTarget = pointerTarget.parentElement;
-    const button = pointerTarget?.closest?.("button");
-    if (!button || button.disabled) return;
-    triggerStrongHaptic();
-    button.classList.remove("haptic-press");
-    requestAnimationFrame(() => button.classList.add("haptic-press"));
-    window.setTimeout(() => button.classList.remove("haptic-press"), 130);
-  }
-
-  function triggerStrongHaptic() {
-    try {
-      if (typeof navigator.vibrate === "function") navigator.vibrate(45);
-    } catch {
-      // iOS Safari currently exposes no vibration API; visual press feedback remains active.
     }
   }
 
