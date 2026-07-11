@@ -4255,6 +4255,37 @@ body.utility-open .practice-dock {
   }
 }
 
+/* Keep wrapped option text inside its own row at every mobile width. */
+.options,
+body.practice-fit .practice-study-area .options {
+  grid-auto-rows: max-content;
+}
+
+.option-button,
+body.practice-fit .practice-study-area .option-button,
+body.practice-fit .density-medium .option-button,
+body.practice-fit .density-tight .option-button,
+body.practice-fit .density-ultra .option-button,
+body.practice-fit .density-micro .option-button {
+  height: auto;
+  min-height: 0;
+  align-self: start;
+  overflow: hidden;
+}
+
+.option-text,
+body.practice-fit .practice-study-area .option-text {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+.wrong-view-tabs {
+  width: 92px;
+  min-width: 92px;
+}
+
 /* Final answer-state and Safari scroll-restoration fixes. */
 html,
 body {
@@ -6982,4 +7013,35 @@ input:focus-visible {
   body.practice-fit .density-micro .option-text {
     font-size: 14px;
   }
+}
+
+/* Release guard: wrapped options use intrinsic height after all theme overrides. */
+.options,
+body.practice-fit .practice-study-area .options {
+  grid-auto-rows: max-content;
+}
+
+.option-button,
+body.practice-fit .practice-study-area .option-button,
+body.practice-fit .density-medium .option-button,
+body.practice-fit .density-tight .option-button,
+body.practice-fit .density-ultra .option-button,
+body.practice-fit .density-micro .option-button {
+  height: auto;
+  min-height: 0;
+  align-self: start;
+  overflow: hidden;
+}
+
+.option-text,
+body.practice-fit .practice-study-area .option-text {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+.wrong-view-tabs {
+  width: 92px;
+  min-width: 92px;
 }

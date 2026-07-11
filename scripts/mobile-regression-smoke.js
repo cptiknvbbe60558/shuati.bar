@@ -141,6 +141,11 @@ async function assertDockHealthy(page, label) {
   if (navButtons.length !== 6) {
     throw new Error(`${label}: expected six dock navigation buttons: ${JSON.stringify(navButtons)}`);
   }
+  const navLabels = navButtons.map((button) => button.text);
+  const expectedNavLabels = ["错题", "收藏", "强化练习", "模拟考试", "练习", "其他"];
+  if (JSON.stringify(navLabels) !== JSON.stringify(expectedNavLabels)) {
+    throw new Error(`${label}: unexpected dock navigation labels: ${JSON.stringify(navLabels)}`);
+  }
   if (new Set(navButtons.map((button) => button.rect.y)).size !== 1) {
     throw new Error(`${label}: dock navigation wrapped to multiple rows: ${JSON.stringify(navButtons)}`);
   }
@@ -267,6 +272,49 @@ async function assertLongQuestionLayout(page) {
   return { seeded, layout };
 }
 
+async function assertWrappedOptionsStayContained(page) {
+  const seeded = await page.evaluate((key) => {
+    const bank = window.QUIZ_BANK?.questions || [];
+    const question = bank.find((item) => item.id === "09257ed3e6b5")
+      || bank.find((item) => item.type === "多选" && (item.options || []).some((option) => String(option.text || "").length > 45));
+    if (!question) throw new Error("wrapped-option regression question is missing");
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    state.mode = "multiple";
+    state.lastPracticeMode = "multiple";
+    state.currentId = question.id;
+    state.lastPracticeId = question.id;
+    state.selectedTypes = ["多选"];
+    state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
+    state.drafts = { ...(state.drafts || {}), [question.id]: (question.options || []).map((option) => option.key) };
+    state.revealed = { ...(state.revealed || {}), [question.id]: true };
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    return { id: question.id, optionCount: question.options.length };
+  }, STORAGE_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForFullBank(page);
+  const layout = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll(".question-card .option-button")];
+    return buttons.map((button, index) => {
+      const text = button.querySelector(".option-text");
+      const buttonRect = button.getBoundingClientRect();
+      const textRect = text.getBoundingClientRect();
+      const nextRect = buttons[index + 1]?.getBoundingClientRect();
+      return {
+        key: button.dataset.key || "",
+        textInside: textRect.top >= buttonRect.top - 0.5 && textRect.bottom <= buttonRect.bottom + 0.5,
+        noNextOverlap: !nextRect || buttonRect.bottom <= nextRect.top + 0.5,
+        buttonHeight: Math.round(buttonRect.height),
+        textHeight: Math.round(textRect.height)
+      };
+    });
+  });
+  if (layout.length !== seeded.optionCount || layout.some((item) => !item.textInside || !item.noNextOverlap)) {
+    throw new Error(`wrapped option escaped its row: ${JSON.stringify({ seeded, layout })}`);
+  }
+  return { seeded, layout };
+}
+
 async function login(page, targetUrl, staffId) {
   await page.goto(`${targetUrl}/?smoke=${Date.now()}`, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.waitForTimeout(1000);
@@ -374,6 +422,24 @@ async function run() {
     results.push({ step: "practice-order", order: await visibleOptionsMatchBank(page, "practice"), sequence: await assertContinuousPracticeOrder(page, "practice") });
     results.push({ step: "practice-type-transition", transition: await assertPracticeTypeTransition(page) });
     results.push({ step: "long-question-layout", audit: await assertLongQuestionLayout(page), dock: await assertDockHealthy(page, "long-question-layout") });
+    results.push({ step: "wrapped-options-contained", audit: await assertWrappedOptionsStayContained(page), dock: await assertDockHealthy(page, "wrapped-options-contained") });
+
+    await clickIfReady(page, 'button[data-action="toggle-favorite"]', "favorite wrapped-option question");
+    await clickIfReady(page, 'button[data-mode="favorite"]', "open favorites mode");
+    const favoriteEntry = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        mode: saved.mode,
+        currentId: saved.currentId,
+        favorite: Boolean(saved.favorites?.[saved.currentId]),
+        activeLabel: document.querySelector(".dock-nav-row > .active")?.textContent?.trim() || "",
+        optionCount: document.querySelectorAll(".question-card .option-button").length
+      };
+    }, STORAGE_KEY);
+    if (favoriteEntry.mode !== "favorite" || !favoriteEntry.favorite || favoriteEntry.activeLabel !== "收藏" || favoriteEntry.optionCount < 2) {
+      throw new Error(`favorites entry is not usable: ${JSON.stringify(favoriteEntry)}`);
+    }
+    results.push({ step: "favorites-entry", favoriteEntry, dock: await assertDockHealthy(page, "favorites-entry") });
 
     await clickIfReady(page, 'button[data-mode="single"]', "open single mode");
     results.push({ step: "single-order", order: await visibleOptionsMatchBank(page, "single") });
@@ -455,14 +521,14 @@ async function run() {
     }
     results.push({ step: "wrong-after-suite", seededWrongId, wrongOptionCount, wrongReviewVisible, dock: await assertDockHealthy(page, "wrong-after-suite") });
 
-    await clickIfReady(page, 'button[data-action="retry-wrong"]:not([disabled])', "start wrong practice");
+    await clickIfReady(page, 'button[data-action="set-wrong-view"][data-view="practice"]:not([disabled])', "start wrong practice");
     const wrongPractice = await page.evaluate((key) => {
       const saved = JSON.parse(localStorage.getItem(key) || "{}");
       return {
         active: Boolean(saved.wrongPractice),
         answerHidden: Boolean(document.querySelector(".answer-panel.answer-placeholder")),
         enabledOptions: document.querySelectorAll(".question-card .option-button:not([disabled])").length,
-        activeButton: Boolean(document.querySelector('button[data-action="retry-wrong"].active'))
+        activeButton: Boolean(document.querySelector('button[data-action="set-wrong-view"][data-view="practice"].active'))
       };
     }, STORAGE_KEY);
     if (!wrongPractice.active || !wrongPractice.answerHidden || !wrongPractice.enabledOptions || !wrongPractice.activeButton) {

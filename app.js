@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-const ASSET_VERSION = "20260711_1245_no_feedback";
+const ASSET_VERSION = "20260711_2100_wrong_favorite_fix";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -876,14 +876,13 @@ const ASSET_VERSION = "20260711_1245_no_feedback";
   }
 
   function renderDockNavRow() {
-    const tabClass = (mode) => `tab-button${state.mode === mode && !(mode === "wrong" && state.wrongPractice) ? " active" : ""}`;
+    const tabClass = (mode) => `tab-button${state.mode === mode ? " active" : ""}`;
     const utilityActive = state.utilityPanel ? " active" : "";
-    const wrongPracticeActive = state.mode === "wrong" && state.wrongPractice ? " active" : "";
     const wrongDisabled = activeWrongIds().length ? "" : " disabled";
     return `
       <div class="dock-nav-row">
-        <button class="${tabClass("wrong")}" data-action="set-mode" data-mode="wrong">错题</button>
-        <button class="tab-button${wrongPracticeActive}" data-action="retry-wrong"${wrongDisabled}>错题重做</button>
+        <button class="${tabClass("wrong")}" data-action="set-mode" data-mode="wrong"${wrongDisabled}>错题</button>
+        <button class="${tabClass("favorite")}" data-action="set-mode" data-mode="favorite">收藏</button>
         <button class="${tabClass("suite")}" data-action="set-mode" data-mode="suite">强化练习</button>
         <button class="${tabClass("exam300")}" data-action="set-mode" data-mode="exam300">模拟考试</button>
         <button class="${tabClass("practice")}" data-action="set-mode" data-mode="practice">练习</button>
@@ -909,7 +908,9 @@ const ASSET_VERSION = "20260711_1245_no_feedback";
         <div class="question-head">
           <div class="badges">
             ${typeSwitcher ? renderHeaderCategorySelect(question) : `<span class="badge blue category-badge">${escapeHtml(question.categoryName)}</span>`}
-            ${typeSwitcher ? renderHeaderTypeTabs(question.type) : `<span class="badge green">${escapeHtml(question.type)}</span>`}
+            ${typeSwitcher
+              ? state.mode === "wrong" ? renderWrongViewTabs() : renderHeaderTypeTabs(question.type)
+              : `<span class="badge green">${escapeHtml(question.type)}</span>`}
             <button class="favorite-star ${favorite ? "active" : ""}" data-action="toggle-favorite" data-id="${escapeAttr(question.id)}" aria-label="${favorite ? "取消收藏" : "收藏"}" aria-pressed="${favorite ? "true" : "false"}">
               <svg class="favorite-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path class="star-fill" d="M12 3.6l2.47 5.01 5.53.8-4 3.9.94 5.5L12 16.21l-4.94 2.6.94-5.5-4-3.9 5.53-.8L12 3.6z"></path>
@@ -959,6 +960,15 @@ const ASSET_VERSION = "20260711_1245_no_feedback";
           </div>
         ` : ""}
       </section>
+    `;
+  }
+
+  function renderWrongViewTabs() {
+    return `
+      <div class="header-type-tabs wrong-view-tabs" role="group" aria-label="错题模式">
+        <button class="header-type-tab${state.wrongPractice ? "" : " active"}" type="button" data-action="set-wrong-view" data-view="review">查看</button>
+        <button class="header-type-tab${state.wrongPractice ? " active" : ""}" type="button" data-action="set-wrong-view" data-view="practice">重做</button>
+      </div>
     `;
   }
 
@@ -1910,20 +1920,24 @@ const ASSET_VERSION = "20260711_1245_no_feedback";
     }
 
     if (action === "retry-wrong") {
-      const wrongIds = activeWrongIds();
-      if (!wrongIds.length) return;
+      startWrongPractice();
+      return;
+    }
+
+    if (action === "set-wrong-view") {
+      if (target.dataset.view === "practice") {
+        startWrongPractice();
+        return;
+      }
       state.mode = "wrong";
-      state.wrongPractice = true;
+      state.wrongPractice = false;
       state.exam = null;
       state.examStartMenuOpen = false;
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.selectedTypes = [...TYPES];
-      for (const id of wrongIds) {
-        delete state.drafts[id];
-        delete state.revealed[id];
-      }
-      state.currentId = isActiveWrong(state.currentId) ? state.currentId : wrongIds[0];
+      const wrongIds = activeWrongIds();
+      state.currentId = isActiveWrong(state.currentId) ? state.currentId : (wrongIds[0] || state.currentId);
       saveAndRender();
       resetViewportScroll();
       return;
@@ -1973,6 +1987,25 @@ const ASSET_VERSION = "20260711_1245_no_feedback";
         render();
       });
     }
+  }
+
+  function startWrongPractice() {
+    const wrongIds = activeWrongIds();
+    if (!wrongIds.length) return;
+    state.mode = "wrong";
+    state.wrongPractice = true;
+    state.exam = null;
+    state.examStartMenuOpen = false;
+    state.utilityPanel = "";
+    state.categoryMenuOpen = false;
+    state.selectedTypes = [...TYPES];
+    for (const id of wrongIds) {
+      delete state.drafts[id];
+      delete state.revealed[id];
+    }
+    state.currentId = isActiveWrong(state.currentId) ? state.currentId : wrongIds[0];
+    saveAndRender();
+    resetViewportScroll();
   }
 
   function onInput(event) {
