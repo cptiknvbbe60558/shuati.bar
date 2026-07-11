@@ -405,13 +405,70 @@ async function run() {
       "enter suite run"
     );
     results.push({ step: "suite-order", order: await visibleOptionsMatchBank(page, "suite") });
+    await clickIfReady(page, '.question-card .option-button:nth-of-type(1)', "answer one suite question before switching modes");
     await clickIfReady(page, 'button[data-action="next-suite"]:not([disabled])', "suite next question");
     results.push({ step: "suite-next", dock: await assertDockHealthy(page, "suite-next") });
+
+    const suiteBeforeSwitch = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        runId: saved.suite?.runId || "",
+        paperId: saved.suite?.paperId || "",
+        index: saved.suite?.index ?? -1,
+        answerCount: Object.keys(saved.suite?.answers || {}).length,
+        outcomeCount: Object.keys(saved.suite?.outcomes || {}).length
+      };
+    }, STORAGE_KEY);
+    await clickIfReady(page, 'button[data-mode="practice"]', "leave active suite for practice");
+    await clickIfReady(page, 'button[data-mode="suite"]', "resume active suite");
+    const suiteAfterReturn = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        runId: saved.suite?.runId || "",
+        paperId: saved.suite?.paperId || "",
+        index: saved.suite?.index ?? -1,
+        answerCount: Object.keys(saved.suite?.answers || {}).length,
+        outcomeCount: Object.keys(saved.suite?.outcomes || {}).length,
+        hasQuestion: Boolean(document.querySelector(".question-card .option-button"))
+      };
+    }, STORAGE_KEY);
+    if (
+      !suiteBeforeSwitch.runId
+      || suiteBeforeSwitch.runId !== suiteAfterReturn.runId
+      || suiteBeforeSwitch.paperId !== suiteAfterReturn.paperId
+      || suiteBeforeSwitch.index !== suiteAfterReturn.index
+      || suiteBeforeSwitch.answerCount !== suiteAfterReturn.answerCount
+      || suiteBeforeSwitch.outcomeCount !== suiteAfterReturn.outcomeCount
+      || !suiteAfterReturn.hasQuestion
+    ) {
+      throw new Error(`suite progress was not resumed after mode switch: ${JSON.stringify({ suiteBeforeSwitch, suiteAfterReturn })}`);
+    }
+    results.push({ step: "suite-resume-after-mode-switch", suiteBeforeSwitch, suiteAfterReturn });
 
     await clickIfReady(page, 'button[data-mode="wrong"]', "open wrong mode");
     const wrongOptionCount = await page.locator(".question-card .option-button").count();
     if (wrongOptionCount < 2) throw new Error("wrong mode after suite is not a normal question view");
-    results.push({ step: "wrong-after-suite", seededWrongId, wrongOptionCount, dock: await assertDockHealthy(page, "wrong-after-suite") });
+    const wrongReviewVisible = await page.locator(".answer-panel:not(.answer-placeholder)").count();
+    const wrongReviewEnabledOptions = await page.locator(".question-card .option-button:not([disabled])").count();
+    if (!wrongReviewVisible || wrongReviewEnabledOptions) {
+      throw new Error(`wrong review is not read-only with answer visible: ${JSON.stringify({ wrongReviewVisible, wrongReviewEnabledOptions })}`);
+    }
+    results.push({ step: "wrong-after-suite", seededWrongId, wrongOptionCount, wrongReviewVisible, dock: await assertDockHealthy(page, "wrong-after-suite") });
+
+    await clickIfReady(page, 'button[data-action="retry-wrong"]:not([disabled])', "start wrong practice");
+    const wrongPractice = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        active: Boolean(saved.wrongPractice),
+        answerHidden: Boolean(document.querySelector(".answer-panel.answer-placeholder")),
+        enabledOptions: document.querySelectorAll(".question-card .option-button:not([disabled])").length,
+        activeButton: Boolean(document.querySelector('button[data-action="retry-wrong"].active'))
+      };
+    }, STORAGE_KEY);
+    if (!wrongPractice.active || !wrongPractice.answerHidden || !wrongPractice.enabledOptions || !wrongPractice.activeButton) {
+      throw new Error(`wrong practice did not become answerable: ${JSON.stringify(wrongPractice)}`);
+    }
+    results.push({ step: "wrong-practice", wrongPractice });
 
     await clickIfReady(page, 'button[data-mode="exam300"]', "open mock exam");
     results.push({ step: "exam-home", dock: await assertDockHealthy(page, "exam-home") });

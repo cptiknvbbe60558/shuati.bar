@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-const ASSET_VERSION = "20260711_1130_premiumglass";
+const ASSET_VERSION = "20260711_1230_resume_haptics";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -124,6 +124,7 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     categoryMenuOpen: false,
     examStartMenuOpen: false,
     studyMode: false,
+    wrongPractice: false,
     specialIndexes: {},
     examSize: 50,
 	    lastPracticeMode: "practice",
@@ -147,6 +148,7 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
   app.addEventListener("input", onInput);
   app.addEventListener("change", onChange);
   app.addEventListener("submit", onSubmit);
+  document.addEventListener("pointerdown", onButtonPointerDown, { passive: true });
   document.addEventListener(
     "dblclick",
     (event) => {
@@ -466,6 +468,7 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     state.categoryMenuOpen = Boolean(state.categoryMenuOpen);
     state.examStartMenuOpen = Boolean(state.examStartMenuOpen);
     state.studyMode = Boolean(state.studyMode);
+    state.wrongPractice = Boolean(state.wrongPractice);
     if (!PRACTICE_MODES.includes(state.lastPracticeMode)) state.lastPracticeMode = "practice";
     syncSelectedTypesForMode();
     if (!questionById.has(state.currentId) && questions[0] && !bank.isStarter) {
@@ -826,9 +829,12 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     const specialIndex = specialMode ? getSpecialReviewIndex(list) : -1;
     const question = specialMode ? list[specialIndex] : (questionById.get(state.currentId) || list[0]);
     const index = specialMode ? specialIndex : Math.max(0, list.findIndex((item) => item.id === question.id));
-    const selected = getDraft(question.id);
-    const revealed = Boolean(state.revealed[question.id] || state.studyMode);
     const last = state.progress[question.id];
+    const wrongReview = state.mode === "wrong" && !state.wrongPractice;
+    const selected = wrongReview && Array.isArray(last?.lastAnswer)
+      ? [...last.lastAnswer]
+      : getDraft(question.id);
+    const revealed = wrongReview || Boolean(state.revealed[question.id] || state.studyMode);
 
     return `
       <section class="practice-screen">
@@ -844,9 +850,9 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
         </div>
         ${renderPracticeDock({
           revealed,
-          canSubmit: selected.length && !revealed && !state.studyMode,
-          allowReveal: question.type !== "多选",
-          studyMode: state.studyMode
+          canSubmit: !wrongReview && selected.length && !revealed && !state.studyMode,
+          allowReveal: !wrongReview && question.type !== "多选",
+          studyMode: wrongReview ? false : state.studyMode
         })}
       </section>
     `;
@@ -871,12 +877,14 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
   }
 
   function renderDockNavRow() {
-    const tabClass = (mode) => `tab-button${state.mode === mode ? " active" : ""}`;
+    const tabClass = (mode) => `tab-button${state.mode === mode && !(mode === "wrong" && state.wrongPractice) ? " active" : ""}`;
     const utilityActive = state.utilityPanel ? " active" : "";
+    const wrongPracticeActive = state.mode === "wrong" && state.wrongPractice ? " active" : "";
+    const wrongDisabled = activeWrongIds().length ? "" : " disabled";
     return `
       <div class="dock-nav-row">
         <button class="${tabClass("wrong")}" data-action="set-mode" data-mode="wrong">错题</button>
-        <button class="tab-button" data-action="retry-wrong">错题重做</button>
+        <button class="tab-button${wrongPracticeActive}" data-action="retry-wrong"${wrongDisabled}>错题重做</button>
         <button class="${tabClass("suite")}" data-action="set-mode" data-mode="suite">强化练习</button>
         <button class="${tabClass("exam300")}" data-action="set-mode" data-mode="exam300">模拟考试</button>
         <button class="${tabClass("practice")}" data-action="set-mode" data-mode="practice">练习</button>
@@ -1566,6 +1574,7 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     const target = clickTarget?.closest?.("[data-action]");
     if (!target) return;
     const action = target.dataset.action;
+    if (event.detail === 0) triggerStrongHaptic();
 
     if (action === "verify-staff") {
       verifyStaffId();
@@ -1602,7 +1611,20 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     if (action === "set-mode") {
       const nextMode = target.dataset.mode;
       if (!VALID_MODES.some(([mode]) => mode === nextMode)) return;
-      if ((nextMode === "wrong" && state.mode === "wrong") || (nextMode === "favorite" && state.mode === "favorite")) {
+      if (nextMode === "wrong") {
+        state.mode = "wrong";
+        state.wrongPractice = false;
+        state.examStartMenuOpen = false;
+        state.utilityPanel = "";
+        state.categoryMenuOpen = false;
+        state.selectedTypes = [...TYPES];
+        const currentWrongId = isActiveWrong(state.currentId) ? state.currentId : activeWrongIds()[0];
+        if (currentWrongId) state.currentId = currentWrongId;
+        saveAndRender();
+        resetViewportScroll();
+        return;
+      }
+      if (nextMode === "favorite" && state.mode === "favorite") {
         restorePracticeLocation();
         state.utilityPanel = "";
         state.categoryMenuOpen = false;
@@ -1625,7 +1647,6 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
         return;
       }
       state.mode = nextMode;
-      if (nextMode === "suite" || state.suite) state.suite = null;
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.examStartMenuOpen = false;
@@ -1891,15 +1912,20 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
     }
 
     if (action === "retry-wrong") {
+      const wrongIds = activeWrongIds();
+      if (!wrongIds.length) return;
       state.mode = "wrong";
+      state.wrongPractice = true;
       state.exam = null;
-      state.suite = null;
       state.examStartMenuOpen = false;
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.selectedTypes = [...TYPES];
-      const firstWrongId = activeWrongIds()[0];
-      if (firstWrongId) state.currentId = firstWrongId;
+      for (const id of wrongIds) {
+        delete state.drafts[id];
+        delete state.revealed[id];
+      }
+      state.currentId = isActiveWrong(state.currentId) ? state.currentId : wrongIds[0];
       saveAndRender();
       resetViewportScroll();
       return;
@@ -1970,6 +1996,25 @@ const ASSET_VERSION = "20260711_1130_premiumglass";
       saveState();
       const label = target.closest(".panel")?.querySelector(".section-title span");
       if (label) label.textContent = target.value ? "已保存" : "空";
+    }
+  }
+
+  function onButtonPointerDown(event) {
+    let pointerTarget = event.target;
+    if (pointerTarget && pointerTarget.nodeType === 3) pointerTarget = pointerTarget.parentElement;
+    const button = pointerTarget?.closest?.("button");
+    if (!button || button.disabled) return;
+    triggerStrongHaptic();
+    button.classList.remove("haptic-press");
+    requestAnimationFrame(() => button.classList.add("haptic-press"));
+    window.setTimeout(() => button.classList.remove("haptic-press"), 130);
+  }
+
+  function triggerStrongHaptic() {
+    try {
+      if (typeof navigator.vibrate === "function") navigator.vibrate(45);
+    } catch {
+      // iOS Safari currently exposes no vibration API; visual press feedback remains active.
     }
   }
 
