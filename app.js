@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260712_1310_practice_index_answer";
+  const ASSET_VERSION = "20260712_1345_option_gradient_fill";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
