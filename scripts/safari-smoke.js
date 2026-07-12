@@ -58,7 +58,11 @@ async function installStateApiMock(context, staffId) {
 }
 
 async function login(page, targetUrl, staffId) {
-  await page.goto(`${targetUrl}/reset?safariSmoke=${Date.now()}`, {
+  const localStaticServer = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(targetUrl);
+  const entryUrl = localStaticServer
+    ? `${targetUrl}/?safariSmoke=${Date.now()}`
+    : `${targetUrl}/reset?safariSmoke=${Date.now()}`;
+  await page.goto(entryUrl, {
     waitUntil: "domcontentloaded",
     timeout: 30000
   });

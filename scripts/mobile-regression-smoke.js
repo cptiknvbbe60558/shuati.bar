@@ -385,6 +385,25 @@ async function visibleOptionsMatchBank(page, label) {
   return result;
 }
 
+async function assertStableBankOrdinal(page, label) {
+  const result = await page.evaluate((scopeLabel) => {
+    const questionText = document.querySelector(".question-card .question-text")?.textContent || "";
+    const normalizedText = questionText.replace(/(全选|正确)$/u, "").trim();
+    const bank = window.QUIZ_BANK?.questions || [];
+    const bankIndex = bank.findIndex((question) => String(question.question || "").trim() === normalizedText);
+    return {
+      label: scopeLabel,
+      visible: document.querySelector(".question-index")?.textContent?.trim() || "",
+      expected: bankIndex >= 0 ? `${bankIndex + 1}/${bank.length}` : "",
+      bankIndex
+    };
+  }, label);
+  if (result.bankIndex < 0 || result.visible !== result.expected) {
+    throw new Error(`${label}: unstable question ordinal: ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
 async function findUnrevealedMultiple(page) {
   await clickIfReady(page, 'button[data-mode="multiple"]', "open multiple mode");
   for (let index = 0; index < 30; index += 1) {
@@ -419,7 +438,12 @@ async function run() {
     await waitForFullBank(page);
     results.push({ step: "login", dock: await assertDockHealthy(page, "login") });
     await clickIfReady(page, 'button[data-mode="practice"]', "open continuous practice");
-    results.push({ step: "practice-order", order: await visibleOptionsMatchBank(page, "practice"), sequence: await assertContinuousPracticeOrder(page, "practice") });
+    results.push({
+      step: "practice-order",
+      order: await visibleOptionsMatchBank(page, "practice"),
+      ordinal: await assertStableBankOrdinal(page, "practice"),
+      sequence: await assertContinuousPracticeOrder(page, "practice")
+    });
     results.push({ step: "practice-type-transition", transition: await assertPracticeTypeTransition(page) });
     results.push({ step: "long-question-layout", audit: await assertLongQuestionLayout(page), dock: await assertDockHealthy(page, "long-question-layout") });
     results.push({ step: "wrapped-options-contained", audit: await assertWrappedOptionsStayContained(page), dock: await assertDockHealthy(page, "wrapped-options-contained") });
@@ -442,7 +466,11 @@ async function run() {
     results.push({ step: "favorites-entry", favoriteEntry, dock: await assertDockHealthy(page, "favorites-entry") });
 
     await clickIfReady(page, 'button[data-mode="single"]', "open single mode");
-    results.push({ step: "single-order", order: await visibleOptionsMatchBank(page, "single") });
+    results.push({
+      step: "single-order",
+      order: await visibleOptionsMatchBank(page, "single"),
+      ordinal: await assertStableBankOrdinal(page, "single")
+    });
 
     const select = page.locator('select[data-action="category-select"]').first();
     if (await select.count()) {
@@ -454,7 +482,23 @@ async function run() {
     }
 
     if (!(await findUnrevealedMultiple(page))) throw new Error("could not find an unrevealed multiple-choice question");
-    results.push({ step: "multiple-order", order: await visibleOptionsMatchBank(page, "multiple") });
+    results.push({
+      step: "multiple-order",
+      order: await visibleOptionsMatchBank(page, "multiple"),
+      ordinal: await assertStableBankOrdinal(page, "multiple")
+    });
+    const revealButton = page.locator('button[data-action="reveal-answer"]').first();
+    if (!(await revealButton.count()) || await revealButton.isDisabled()) {
+      throw new Error("practice answer button is not available for multiple-choice questions");
+    }
+    await revealButton.click();
+    await page.waitForTimeout(350);
+    if (!(await page.locator(".answer-panel:not(.answer-placeholder)").count())) {
+      throw new Error("practice answer button did not reveal the answer");
+    }
+    results.push({ step: "practice-answer-button", multipleRevealWorks: true });
+    await clickIfReady(page, 'button[data-action="next-question"]:not([disabled])', "next after answer reveal");
+    if (!(await findUnrevealedMultiple(page))) throw new Error("could not find another unrevealed multiple-choice question");
     await clickIfReady(page, ".question-card .option-button:nth-of-type(1)", "select first multiple option");
     await clickIfReady(page, ".question-card .option-button:nth-of-type(2)", "select second multiple option", false);
     const revealedAfterSelect = await page.locator(".answer-panel:not(.answer-placeholder)").count();

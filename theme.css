@@ -16,8 +16,12 @@
   --ui-red: #d95567;
   --ui-red-fill: #fff0f3;
   --ui-red-line: #ffd7df;
-  --ui-pink: #d9569a;
+  --ui-pink: #df62aa;
   --ui-pink-fill: #fff0f8;
+  --ui-pink-line: #f7d9e9;
+  --ui-cyan: #43b9d3;
+  --ui-cyan-fill: #ecfbff;
+  --ui-cyan-line: #d1f2f8;
   --ui-shadow: 0 12px 32px rgba(31, 36, 46, 0.055), 0 1px 2px rgba(31, 36, 46, 0.035);
 }
 
@@ -216,27 +220,27 @@ body.practice-fit .practice-study-area .option-text {
 
 .option-button.correct,
 .option-button.correct.selected {
-  border-color: var(--ui-green-line) !important;
-  background: var(--ui-green-fill) !important;
+  border-color: var(--ui-cyan-line) !important;
+  background: var(--ui-cyan-fill) !important;
   box-shadow: none !important;
 }
 
 .option-button.correct .option-key,
 .option-button.correct.selected .option-key {
-  background: #2db476 !important;
+  background: #55c5dc !important;
   color: #fff !important;
 }
 
 .option-button.wrong,
 .option-button.wrong.selected {
-  border-color: var(--ui-red-line) !important;
-  background: var(--ui-red-fill) !important;
+  border-color: var(--ui-pink-line) !important;
+  background: var(--ui-pink-fill) !important;
   box-shadow: none !important;
 }
 
 .option-button.wrong .option-key,
 .option-button.wrong.selected .option-key {
-  background: #e46474 !important;
+  background: #ea73b2 !important;
   color: #fff !important;
 }
 

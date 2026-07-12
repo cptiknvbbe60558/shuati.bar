@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260712_1245_white_pastel_ui";
+  const ASSET_VERSION = "20260712_1310_practice_index_answer";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -84,6 +84,7 @@
   let questions = bank.questions || [];
   let categories = bank.categories || [];
   let questionById = new Map(questions.map((question) => [question.id, question]));
+  let questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
   let categoryIds = new Set(categories.map((category) => category.id));
   let installPrompt = null;
   let verifyError = "";
@@ -829,6 +830,12 @@
     const question = specialMode ? list[specialIndex] : (questionById.get(state.currentId) || list[0]);
     const index = specialMode ? specialIndex : Math.max(0, list.findIndex((item) => item.id === question.id));
     const last = state.progress[question.id];
+    const stablePracticeIndex = PRACTICE_MODES.includes(state.mode)
+      ? questionOrdinalById.get(question.id)
+      : null;
+    const indexLabel = stablePracticeIndex
+      ? `${stablePracticeIndex}/${bank.totalQuestions || questions.length}`
+      : `${index + 1}/${list.length}`;
     const wrongReview = state.mode === "wrong" && !state.wrongPractice;
     const selected = wrongReview && Array.isArray(last?.lastAnswer)
       ? [...last.lastAnswer]
@@ -842,6 +849,7 @@
             question,
             index,
             total: list.length,
+            indexLabel,
             selected,
             revealed,
             lastCorrect: last ? last.lastCorrect : null
@@ -850,7 +858,7 @@
         ${renderPracticeDock({
           revealed,
           canSubmit: !wrongReview && selected.length && !revealed && !state.studyMode,
-          allowReveal: !wrongReview && question.type !== "多选",
+          allowReveal: !wrongReview,
           studyMode: wrongReview ? false : state.studyMode
         })}
       </section>
@@ -891,7 +899,7 @@
     `;
   }
 
-  function renderQuestionCard({ question, index, total, selected, revealed, lastCorrect, typeSwitcher = true }) {
+  function renderQuestionCard({ question, index, total, indexLabel = "", selected, revealed, lastCorrect, typeSwitcher = true }) {
     const presentedOptions = getPresentedOptions(question);
     const answerText = formatPresentedAnswer(question, presentedOptions);
     const selectedAnswer = formatPracticeSelection(question, selected, presentedOptions);
@@ -920,7 +928,7 @@
             <span class="badge blue actual-category-badge">${escapeHtml(shortCategoryName(question.categoryName))}</span>
           </div>
           <div class="question-progress-row">
-            <div class="question-index">${index + 1}/${total}</div>
+            <div class="question-index">${escapeHtml(indexLabel || `${index + 1}/${total}`)}</div>
             ${statusBadge}
           </div>
         </div>
@@ -1738,7 +1746,7 @@
 
     if (action === "reveal-answer") {
       const question = currentPracticeQuestion();
-      if (question?.type === "多选") return;
+      if (!question) return;
       state.revealed[question.id] = true;
       saveAndRender();
       return;
@@ -3662,6 +3670,7 @@
       questions = bank.questions || [];
       categories = bank.categories || [];
       questionById = new Map(questions.map((question) => [question.id, question]));
+      questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
       categoryIds = new Set(categories.map((category) => category.id));
 	      if (SPECIAL_REVIEW_MODES.includes(modeBeforeFullLoad) || modeBeforeFullLoad === "suite") {
 	        state.mode = modeBeforeFullLoad;
