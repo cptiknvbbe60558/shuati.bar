@@ -58,6 +58,7 @@ async function runEngine(engine, device, name) {
       state.lastPracticeMode = "practice";
       state.currentId = questionId;
       state.lastPracticeId = questionId;
+      state.practiceLocations = { ...(state.practiceLocations || {}), practice: questionId };
       state.selectedTypes = ["单选", "多选", "判断"];
       state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
       state.studyMode = false;
@@ -95,6 +96,9 @@ async function runEngine(engine, device, name) {
     if (!audit.correct || !audit.wrong) throw new Error(`${name}: answer state rows are missing`);
     if (audit.correct.backgroundImage === "none" || audit.wrong.backgroundImage === "none") {
       throw new Error(`${name}: full-row gradients are missing: ${JSON.stringify(audit)}`);
+    }
+    if (audit.correct.keyBackground !== "rgb(47, 166, 111)" || audit.wrong.keyBackground !== "rgb(223, 102, 121)") {
+      throw new Error(`${name}: semantic answer colors are inconsistent: ${JSON.stringify(audit)}`);
     }
     if (audit.correct.width < 300 || audit.wrong.width < 300) {
       throw new Error(`${name}: answer state does not cover the option row: ${JSON.stringify(audit)}`);

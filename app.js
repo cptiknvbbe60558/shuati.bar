@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260712_1455_unified_pastel_palette";
+  const ASSET_VERSION = "20260712_1525_practice_scope_resume";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
@@ -85,6 +85,7 @@
   let categories = bank.categories || [];
   let questionById = new Map(questions.map((question) => [question.id, question]));
   let questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
+  let categoryOrdinalById = new Map(categories.map((category, index) => [category.id, index]));
   let categoryIds = new Set(categories.map((category) => category.id));
   let installPrompt = null;
   let verifyError = "";
@@ -130,6 +131,12 @@
     examSize: 50,
 	    lastPracticeMode: "practice",
 	    lastPracticeId: questions[0] ? questions[0].id : "",
+	    practiceLocations: {
+	      practice: questions[0] ? questions[0].id : "",
+	      single: "",
+	      multiple: "",
+	      judge: ""
+	    },
 	    exam: null,
 	    suitePapers: [],
 	    suite: null
@@ -226,6 +233,13 @@
 	        studyMode: Boolean(saved.studyMode),
 	        lastPracticeMode: saved.lastPracticeMode || defaultState.lastPracticeMode,
 	        lastPracticeId: saved.lastPracticeId || defaultState.lastPracticeId,
+	        practiceLocations: {
+	          ...defaultState.practiceLocations,
+	          ...(saved.practiceLocations || {}),
+	          ...(!saved.practiceLocations && PRACTICE_MODES.includes(saved.lastPracticeMode) && saved.lastPracticeId
+	            ? { [saved.lastPracticeMode]: saved.lastPracticeId }
+	            : {})
+	        },
 	        suitePapers: Array.isArray(saved.suitePapers) ? saved.suitePapers : [],
 	        suite: saved.suite || null
 	      };
@@ -470,6 +484,12 @@
     state.studyMode = Boolean(state.studyMode);
     state.wrongPractice = Boolean(state.wrongPractice);
     if (!PRACTICE_MODES.includes(state.lastPracticeMode)) state.lastPracticeMode = "practice";
+    state.practiceLocations = state.practiceLocations && typeof state.practiceLocations === "object"
+      ? state.practiceLocations
+      : { ...defaultState.practiceLocations };
+    for (const mode of PRACTICE_MODES) {
+      if (typeof state.practiceLocations[mode] !== "string") state.practiceLocations[mode] = "";
+    }
     syncSelectedTypesForMode();
     if (!questionById.has(state.currentId) && questions[0] && !bank.isStarter) {
       state.currentId = questions[0].id;
@@ -830,12 +850,7 @@
     const question = specialMode ? list[specialIndex] : (questionById.get(state.currentId) || list[0]);
     const index = specialMode ? specialIndex : Math.max(0, list.findIndex((item) => item.id === question.id));
     const last = state.progress[question.id];
-    const stablePracticeIndex = PRACTICE_MODES.includes(state.mode)
-      ? questionOrdinalById.get(question.id)
-      : null;
-    const indexLabel = stablePracticeIndex
-      ? `${stablePracticeIndex}/${bank.totalQuestions || questions.length}`
-      : `${index + 1}/${list.length}`;
+    const indexLabel = `${index + 1}/${list.length}`;
     const wrongReview = state.mode === "wrong" && !state.wrongPractice;
     const selected = wrongReview && Array.isArray(last?.lastAnswer)
       ? [...last.lastAnswer]
@@ -1627,6 +1642,8 @@
     if (action === "set-mode") {
       const nextMode = target.dataset.mode;
       if (!VALID_MODES.some(([mode]) => mode === nextMode)) return;
+      const previousMode = state.mode;
+      if (PRACTICE_MODES.includes(previousMode)) rememberPracticeLocation();
       if (nextMode === "wrong") {
         state.mode = "wrong";
         state.wrongPractice = false;
@@ -1662,11 +1679,17 @@
         resetViewportScroll();
         return;
       }
-      state.mode = nextMode;
+      if (nextMode === "practice" && !PRACTICE_MODES.includes(previousMode)) {
+        restorePracticeLocation();
+      } else if (PRACTICE_MODES.includes(nextMode)) {
+        activatePracticeMode(nextMode);
+      } else {
+        state.mode = nextMode;
+        syncSelectedTypesForMode();
+      }
       state.utilityPanel = "";
       state.categoryMenuOpen = false;
       state.examStartMenuOpen = false;
-      syncSelectedTypesForMode();
       if (state.mode === "wrong" || state.mode === "favorite") state.selectedTypes = [...TYPES];
       saveAndRender();
       resetViewportScroll();
@@ -2738,7 +2761,7 @@
     const selectedCategories = new Set(state.selectedCategories);
     const selectedTypes = new Set(state.selectedTypes);
     const query = state.query.trim().toLowerCase();
-    return questions.filter((question) => {
+    const filtered = questions.filter((question) => {
       if (!selectedCategories.has(question.category)) return false;
       if (!selectedTypes.has(question.type)) return false;
       if (!query) return true;
@@ -2750,6 +2773,12 @@
         ...question.options.map((option) => option.text)
       ].join("\n").toLowerCase();
       return haystack.includes(query);
+    });
+    return filtered.sort((left, right) => {
+      const categoryDelta = (categoryOrdinalById.get(left.category) ?? Number.MAX_SAFE_INTEGER)
+        - (categoryOrdinalById.get(right.category) ?? Number.MAX_SAFE_INTEGER);
+      if (categoryDelta) return categoryDelta;
+      return (questionOrdinalById.get(left.id) || 0) - (questionOrdinalById.get(right.id) || 0);
     });
   }
 
@@ -3559,8 +3588,26 @@
   function rememberPracticeLocation() {
     if (!PRACTICE_MODES.includes(state.mode)) return;
     if (!questionById.has(state.currentId)) return;
+    if (!state.practiceLocations || typeof state.practiceLocations !== "object") {
+      state.practiceLocations = { ...defaultState.practiceLocations };
+    }
+    state.practiceLocations[state.mode] = state.currentId;
     state.lastPracticeMode = state.mode;
     state.lastPracticeId = state.currentId;
+  }
+
+  function activatePracticeMode(mode) {
+    const nextMode = PRACTICE_MODES.includes(mode) ? mode : "practice";
+    state.mode = nextMode;
+    syncSelectedTypesForMode();
+    const preferredId = state.practiceLocations?.[nextMode]
+      || (state.lastPracticeMode === nextMode ? state.lastPracticeId : "");
+    const list = getModeQuestions(nextMode, getBaseFilteredQuestions());
+    if (preferredId && list.some((question) => question.id === preferredId)) {
+      state.currentId = preferredId;
+    } else if (list[0]) {
+      state.currentId = list[0].id;
+    }
   }
 
   function restorePracticeLocation() {
@@ -3568,8 +3615,15 @@
       ? state.lastPracticeMode
       : "practice";
     state.mode = mode;
-    if (state.lastPracticeId) state.currentId = state.lastPracticeId;
     syncSelectedTypesForMode();
+    const preferredId = state.practiceLocations?.[mode] || state.lastPracticeId;
+    if (preferredId) state.currentId = preferredId;
+    if (!bank.isStarter) {
+      const list = getModeQuestions(mode, getBaseFilteredQuestions());
+      if (!list.some((question) => question.id === state.currentId) && list[0]) {
+        state.currentId = list[0].id;
+      }
+    }
     state.exam = null;
   }
 
@@ -3671,6 +3725,7 @@
       categories = bank.categories || [];
       questionById = new Map(questions.map((question) => [question.id, question]));
       questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
+      categoryOrdinalById = new Map(categories.map((category, index) => [category.id, index]));
       categoryIds = new Set(categories.map((category) => category.id));
 	      if (SPECIAL_REVIEW_MODES.includes(modeBeforeFullLoad) || modeBeforeFullLoad === "suite") {
 	        state.mode = modeBeforeFullLoad;

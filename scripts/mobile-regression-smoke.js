@@ -191,6 +191,7 @@ async function assertPracticeTypeTransition(page) {
     state.lastPracticeMode = "practice";
     state.currentId = bank[transitionIndex].id;
     state.lastPracticeId = bank[transitionIndex].id;
+    state.practiceLocations = { ...(state.practiceLocations || {}), practice: bank[transitionIndex].id };
     state.selectedTypes = ["单选", "多选", "判断"];
     state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
     localStorage.setItem(key, JSON.stringify(state));
@@ -229,6 +230,7 @@ async function assertLongQuestionLayout(page) {
     state.lastPracticeMode = "practice";
     state.currentId = question.id;
     state.lastPracticeId = question.id;
+    state.practiceLocations = { ...(state.practiceLocations || {}), practice: question.id };
     state.selectedTypes = ["单选", "多选", "判断"];
     state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
     state.studyMode = false;
@@ -283,6 +285,7 @@ async function assertWrappedOptionsStayContained(page) {
     state.lastPracticeMode = "multiple";
     state.currentId = question.id;
     state.lastPracticeId = question.id;
+    state.practiceLocations = { ...(state.practiceLocations || {}), multiple: question.id };
     state.selectedTypes = ["多选"];
     state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
     state.drafts = { ...(state.drafts || {}), [question.id]: (question.options || []).map((option) => option.key) };
@@ -294,8 +297,10 @@ async function assertWrappedOptionsStayContained(page) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForFullBank(page);
   const layout = await page.evaluate(() => {
+    const card = document.querySelector(".question-card");
+    if (card) card.scrollTop = card.scrollHeight;
     const buttons = [...document.querySelectorAll(".question-card .option-button")];
-    return buttons.map((button, index) => {
+    const rows = buttons.map((button, index) => {
       const text = button.querySelector(".option-text");
       const buttonRect = button.getBoundingClientRect();
       const textRect = text.getBoundingClientRect();
@@ -308,8 +313,20 @@ async function assertWrappedOptionsStayContained(page) {
         textHeight: Math.round(textRect.height)
       };
     });
+    const cardRect = card?.getBoundingClientRect();
+    const lastRect = buttons.at(-1)?.getBoundingClientRect();
+    return {
+      rows,
+      lastOptionVisible: Boolean(cardRect && lastRect && lastRect.bottom <= cardRect.bottom + 0.5),
+      bottomGap: cardRect && lastRect ? Math.round(cardRect.bottom - lastRect.bottom) : -1
+    };
   });
-  if (layout.length !== seeded.optionCount || layout.some((item) => !item.textInside || !item.noNextOverlap)) {
+  if (
+    layout.rows.length !== seeded.optionCount
+    || layout.rows.some((item) => !item.textInside || !item.noNextOverlap)
+    || !layout.lastOptionVisible
+    || layout.bottomGap < 8
+  ) {
     throw new Error(`wrapped option escaped its row: ${JSON.stringify({ seeded, layout })}`);
   }
   return { seeded, layout };
@@ -385,21 +402,36 @@ async function visibleOptionsMatchBank(page, label) {
   return result;
 }
 
-async function assertStableBankOrdinal(page, label) {
-  const result = await page.evaluate((scopeLabel) => {
+async function assertScopedPracticeOrdinal(page, label) {
+  const result = await page.evaluate(({ scopeLabel, key }) => {
     const questionText = document.querySelector(".question-card .question-text")?.textContent || "";
     const normalizedText = questionText.replace(/(全选|正确)$/u, "").trim();
     const bank = window.QUIZ_BANK?.questions || [];
-    const bankIndex = bank.findIndex((question) => String(question.question || "").trim() === normalizedText);
+    const categories = window.QUIZ_BANK?.categories || [];
+    const categoryOrder = new Map(categories.map((category, index) => [category.id, index]));
+    const sourceOrder = new Map(bank.map((question, index) => [question.id, index]));
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const selectedCategories = new Set(state.selectedCategories || categories.map((category) => category.id));
+    const selectedTypes = new Set(state.selectedTypes || ["单选", "多选", "判断"]);
+    const scoped = bank
+      .filter((question) => selectedCategories.has(question.category) && selectedTypes.has(question.type))
+      .sort((left, right) => {
+        const categoryDelta = (categoryOrder.get(left.category) ?? Number.MAX_SAFE_INTEGER)
+          - (categoryOrder.get(right.category) ?? Number.MAX_SAFE_INTEGER);
+        return categoryDelta || (sourceOrder.get(left.id) || 0) - (sourceOrder.get(right.id) || 0);
+      });
+    const scopedIndex = scoped.findIndex((question) => String(question.question || "").trim() === normalizedText);
     return {
       label: scopeLabel,
       visible: document.querySelector(".question-index")?.textContent?.trim() || "",
-      expected: bankIndex >= 0 ? `${bankIndex + 1}/${bank.length}` : "",
-      bankIndex
+      expected: scopedIndex >= 0 ? `${scopedIndex + 1}/${scoped.length}` : "",
+      scopedIndex,
+      scopedTotal: scoped.length,
+      mode: state.mode
     };
-  }, label);
-  if (result.bankIndex < 0 || result.visible !== result.expected) {
-    throw new Error(`${label}: unstable question ordinal: ${JSON.stringify(result)}`);
+  }, { scopeLabel: label, key: STORAGE_KEY });
+  if (result.scopedIndex < 0 || result.visible !== result.expected) {
+    throw new Error(`${label}: incorrect scoped question ordinal: ${JSON.stringify(result)}`);
   }
   return result;
 }
@@ -441,7 +473,7 @@ async function run() {
     results.push({
       step: "practice-order",
       order: await visibleOptionsMatchBank(page, "practice"),
-      ordinal: await assertStableBankOrdinal(page, "practice"),
+      ordinal: await assertScopedPracticeOrdinal(page, "practice"),
       sequence: await assertContinuousPracticeOrder(page, "practice")
     });
     results.push({ step: "practice-type-transition", transition: await assertPracticeTypeTransition(page) });
@@ -469,7 +501,7 @@ async function run() {
     results.push({
       step: "single-order",
       order: await visibleOptionsMatchBank(page, "single"),
-      ordinal: await assertStableBankOrdinal(page, "single")
+      ordinal: await assertScopedPracticeOrdinal(page, "single")
     });
 
     const select = page.locator('select[data-action="category-select"]').first();
@@ -485,7 +517,7 @@ async function run() {
     results.push({
       step: "multiple-order",
       order: await visibleOptionsMatchBank(page, "multiple"),
-      ordinal: await assertStableBankOrdinal(page, "multiple")
+      ordinal: await assertScopedPracticeOrdinal(page, "multiple")
     });
     const revealButton = page.locator('button[data-action="reveal-answer"]').first();
     if (!(await revealButton.count()) || await revealButton.isDisabled()) {
@@ -506,6 +538,15 @@ async function run() {
     if (revealedAfterSelect) throw new Error("multiple choice revealed answer before submit");
     if (!submitEnabled) throw new Error("multiple choice submit did not enable after selecting options");
     results.push({ step: "multiple-no-auto-reveal", submitEnabled });
+
+    const practiceBeforeSuite = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        mode: saved.mode,
+        currentId: saved.currentId,
+        visibleIndex: document.querySelector(".question-index")?.textContent?.trim() || ""
+      };
+    }, STORAGE_KEY);
 
     await clickIfReady(page, 'button[data-mode="suite"]', "open suite mode");
     results.push({ step: "suite-home", dock: await assertDockHealthy(page, "suite-home") });
@@ -530,6 +571,24 @@ async function run() {
       };
     }, STORAGE_KEY);
     await clickIfReady(page, 'button[data-mode="practice"]', "leave active suite for practice");
+    const practiceAfterSuite = await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return {
+        mode: saved.mode,
+        currentId: saved.currentId,
+        visibleIndex: document.querySelector(".question-index")?.textContent?.trim() || "",
+        optionCount: document.querySelectorAll(".question-card .option-button").length
+      };
+    }, STORAGE_KEY);
+    if (
+      practiceAfterSuite.mode !== practiceBeforeSuite.mode
+      || practiceAfterSuite.currentId !== practiceBeforeSuite.currentId
+      || practiceAfterSuite.visibleIndex !== practiceBeforeSuite.visibleIndex
+      || practiceAfterSuite.optionCount < 2
+    ) {
+      throw new Error(`practice location was not resumed after suite switch: ${JSON.stringify({ practiceBeforeSuite, practiceAfterSuite })}`);
+    }
+    results.push({ step: "practice-resume-after-suite", practiceBeforeSuite, practiceAfterSuite });
     await clickIfReady(page, 'button[data-mode="suite"]', "resume active suite");
     const suiteAfterReturn = await page.evaluate((key) => {
       const saved = JSON.parse(localStorage.getItem(key) || "{}");

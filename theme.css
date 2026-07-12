@@ -225,7 +225,7 @@ body.practice-fit .practice-study-area .option-button.selected:not(.correct):not
 
 .option-button.selected:not(.correct):not(.wrong) .option-key,
 body.practice-fit .practice-study-area .option-button.selected:not(.correct):not(.wrong) .option-key {
-  background: var(--ui-blue-strong) !important;
+  background: var(--ui-blue) !important;
   color: #fff !important;
 }
 
@@ -242,7 +242,7 @@ body.practice-fit .practice-study-area .option-button.correct.selected {
 .option-button.correct.selected .option-key,
 body.practice-fit .practice-study-area .option-button.correct .option-key,
 body.practice-fit .practice-study-area .option-button.correct.selected .option-key {
-  background: var(--ui-green-strong) !important;
+  background: var(--ui-green) !important;
   color: #fff !important;
 }
 
@@ -259,7 +259,7 @@ body.practice-fit .practice-study-area .option-button.wrong.selected {
 .option-button.wrong.selected .option-key,
 body.practice-fit .practice-study-area .option-button.wrong .option-key,
 body.practice-fit .practice-study-area .option-button.wrong.selected .option-key {
-  background: var(--ui-red-strong) !important;
+  background: var(--ui-red) !important;
   color: #fff !important;
 }
 
@@ -270,6 +270,22 @@ body.practice-fit .answer-panel-outside,
   box-shadow: var(--ui-shadow) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+.options,
+body.practice-fit .practice-study-area .options,
+body.practice-fit .density-tight .options,
+body.practice-fit .density-ultra .options,
+body.practice-fit .density-micro .options {
+  scroll-margin-bottom: 16px !important;
+}
+
+.options::after,
+body.practice-fit .practice-study-area .options::after {
+  content: "";
+  display: block;
+  grid-column: 1 / -1;
+  height: 16px;
 }
 
 .answer-compare-cell + .answer-compare-cell {
