@@ -16,7 +16,8 @@ const entries = [
   "index.html",
   "manifest.webmanifest",
   "service-worker.js",
-  "styles.css"
+  "styles.css",
+  "theme.css"
 ];
 
 fs.rmSync(output, { recursive: true, force: true });

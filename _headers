@@ -14,6 +14,9 @@
 /styles.css
   Cache-Control: no-cache, no-store, must-revalidate
 
+/theme.css
+  Cache-Control: no-cache, no-store, must-revalidate
+
 /data/starter.js
   Cache-Control: no-cache, no-store, must-revalidate
 

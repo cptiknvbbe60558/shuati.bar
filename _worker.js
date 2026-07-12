@@ -4,6 +4,7 @@ const ASSET_NO_CACHE_CONTROL = "no-cache, no-store, must-revalidate";
 const NO_CACHE_ASSET_PATHS = new Set([
   "/app.js",
   "/styles.css",
+  "/theme.css",
   "/manifest.webmanifest",
   "/data/starter.js",
   "/data/questions.js"
