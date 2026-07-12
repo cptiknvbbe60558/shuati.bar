@@ -74,7 +74,7 @@
     multiple: 965,
     judge: 974
   };
-  const ASSET_VERSION = "20260712_1345_option_gradient_fill";
+  const ASSET_VERSION = "20260712_1455_unified_pastel_palette";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;

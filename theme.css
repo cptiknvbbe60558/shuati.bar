@@ -7,21 +7,30 @@
   --ui-line-strong: #dfe2e7;
   --ui-text: #181a1f;
   --ui-muted: #747982;
-  --ui-blue: #5f78df;
+  --ui-blue: #6680e7;
+  --ui-blue-strong: #6e86e8;
   --ui-blue-fill: #eef1ff;
-  --ui-blue-line: #dce3ff;
-  --ui-green: #229a62;
-  --ui-green-fill: #eaf8f0;
-  --ui-green-line: #ccefdc;
-  --ui-red: #d95567;
+  --ui-blue-fill-deep: #e7ebff;
+  --ui-blue-line: #d9e0ff;
+  --ui-green: #2fa66f;
+  --ui-green-strong: #43b77c;
+  --ui-green-fill: #eaf8f1;
+  --ui-green-fill-deep: #e2f5eb;
+  --ui-green-line: #caead8;
+  --ui-red: #df6679;
+  --ui-red-strong: #e76f82;
   --ui-red-fill: #fff0f3;
-  --ui-red-line: #ffd7df;
-  --ui-pink: #df62aa;
+  --ui-red-fill-deep: #fbe6eb;
+  --ui-red-line: #f5cbd3;
+  --ui-purple: #b06ed6;
+  --ui-purple-fill: #f7edfc;
+  --ui-purple-line: #ead8f3;
+  --ui-pink: #dc70b3;
   --ui-pink-fill: #fff0f8;
-  --ui-pink-line: #f7d9e9;
-  --ui-cyan: #43b9d3;
-  --ui-cyan-fill: #ecfbff;
-  --ui-cyan-line: #d1f2f8;
+  --ui-pink-line: #f4d6e7;
+  --ui-cyan: #4cb6c9;
+  --ui-cyan-fill: #ecfaff;
+  --ui-cyan-line: #d2eff5;
   --ui-shadow: 0 12px 32px rgba(31, 36, 46, 0.055), 0 1px 2px rgba(31, 36, 46, 0.035);
 }
 
@@ -209,14 +218,14 @@ body.practice-fit .practice-study-area .option-text {
 
 .option-button.selected:not(.correct):not(.wrong),
 body.practice-fit .practice-study-area .option-button.selected:not(.correct):not(.wrong) {
-  border-color: #c8d2ff !important;
-  background: linear-gradient(110deg, #e2e7ff 0%, #eef1ff 52%, #e5f8ff 100%) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 5px 14px rgba(95, 120, 223, 0.1) !important;
+  border-color: var(--ui-blue-line) !important;
+  background: linear-gradient(110deg, var(--ui-blue-fill-deep) 0%, var(--ui-blue-fill) 54%, #f3f5ff 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 5px 14px rgba(102, 128, 231, 0.09) !important;
 }
 
 .option-button.selected:not(.correct):not(.wrong) .option-key,
 body.practice-fit .practice-study-area .option-button.selected:not(.correct):not(.wrong) .option-key {
-  background: #6e85e5 !important;
+  background: var(--ui-blue-strong) !important;
   color: #fff !important;
 }
 
@@ -224,16 +233,16 @@ body.practice-fit .practice-study-area .option-button.selected:not(.correct):not
 .option-button.correct.selected,
 body.practice-fit .practice-study-area .option-button.correct,
 body.practice-fit .practice-study-area .option-button.correct.selected {
-  border-color: #afe7f2 !important;
-  background: linear-gradient(110deg, #d8f7ff 0%, #e7f8ff 50%, #e8edff 100%) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 5px 14px rgba(67, 185, 211, 0.1) !important;
+  border-color: var(--ui-green-line) !important;
+  background: linear-gradient(110deg, var(--ui-green-fill-deep) 0%, var(--ui-green-fill) 54%, #f2fbf6 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 5px 14px rgba(47, 166, 111, 0.09) !important;
 }
 
 .option-button.correct .option-key,
 .option-button.correct.selected .option-key,
 body.practice-fit .practice-study-area .option-button.correct .option-key,
 body.practice-fit .practice-study-area .option-button.correct.selected .option-key {
-  background: #55c5dc !important;
+  background: var(--ui-green-strong) !important;
   color: #fff !important;
 }
 
@@ -241,16 +250,16 @@ body.practice-fit .practice-study-area .option-button.correct.selected .option-k
 .option-button.wrong.selected,
 body.practice-fit .practice-study-area .option-button.wrong,
 body.practice-fit .practice-study-area .option-button.wrong.selected {
-  border-color: #f2bad7 !important;
-  background: linear-gradient(110deg, #ffd8ec 0%, #f9e4f7 48%, #e3ebff 100%) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 5px 14px rgba(223, 98, 170, 0.1) !important;
+  border-color: var(--ui-red-line) !important;
+  background: linear-gradient(110deg, var(--ui-red-fill-deep) 0%, var(--ui-red-fill) 54%, #fff6f7 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 5px 14px rgba(223, 102, 121, 0.09) !important;
 }
 
 .option-button.wrong .option-key,
 .option-button.wrong.selected .option-key,
 body.practice-fit .practice-study-area .option-button.wrong .option-key,
 body.practice-fit .practice-study-area .option-button.wrong.selected .option-key {
-  background: #ea73b2 !important;
+  background: var(--ui-red-strong) !important;
   color: #fff !important;
 }
 
@@ -307,10 +316,10 @@ body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button,
 body.practice-fit .solid-button:not(:disabled),
 .suite-run-strip .solid-button:not(:disabled),
 .suite-home-card .solid-button:not(:disabled) {
-  border-color: #627ce1 !important;
-  background: #6882e5 !important;
+  border-color: var(--ui-blue) !important;
+  background: var(--ui-blue-strong) !important;
   color: #fff !important;
-  box-shadow: 0 6px 15px rgba(95, 120, 223, 0.18) !important;
+  box-shadow: 0 6px 15px rgba(102, 128, 231, 0.16) !important;
 }
 
 .soft-button:disabled,
@@ -325,9 +334,9 @@ body.practice-fit .solid-button:not(:disabled),
 .memorize-button.active,
 .practice-dock .memorize-button.active,
 body.practice-fit .practice-dock .memorize-button.active {
-  border-color: #f7d9e8 !important;
-  background: var(--ui-pink-fill) !important;
-  color: var(--ui-pink) !important;
+  border-color: var(--ui-purple-line) !important;
+  background: var(--ui-purple-fill) !important;
+  color: var(--ui-purple) !important;
   box-shadow: none !important;
 }
 
@@ -408,12 +417,12 @@ body.practice-fit .practice-dock .tab-button.active {
 }
 
 .progress-bar span {
-  background: #6882e5 !important;
+  background: var(--ui-blue-strong) !important;
 }
 
 .score-ring {
   color: var(--ui-blue) !important;
-  background: conic-gradient(#6882e5 var(--value), #eceff5 0), #fff !important;
+  background: conic-gradient(var(--ui-blue-strong) var(--value), #eceff5 0), #fff !important;
 }
 
 .danger-button {
@@ -490,16 +499,16 @@ body.practice-fit .practice-dock .tab-button.active {
 .verify-input:focus,
 .search-input:focus,
 .note-box:focus {
-  border-color: #91a7f4 !important;
+  border-color: #aab8f2 !important;
   outline: 0 !important;
-  box-shadow: 0 0 0 4px rgba(95, 120, 223, 0.13) !important;
+  box-shadow: 0 0 0 4px rgba(102, 128, 231, 0.12) !important;
 }
 
 button:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgba(95, 120, 223, 0.52) !important;
+  outline: 2px solid rgba(102, 128, 231, 0.5) !important;
   outline-offset: 2px !important;
 }
 
