@@ -5759,6 +5759,12 @@ body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button {
   white-space: nowrap;
 }
 
+/* Suite dock mirrors submit on both sides for either-hand use. */
+.suite-dock .practice-toolbar.dock-primary-row,
+body.practice-fit .suite-dock .practice-toolbar.dock-primary-row {
+  grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+}
+
 .practice-dock .practice-toolbar.dock-primary-row .nav-icon-button,
 body.practice-fit .practice-dock .practice-toolbar.dock-primary-row .nav-icon-button {
   min-height: 50px;

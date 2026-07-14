@@ -183,7 +183,16 @@ async function assertContinuousPracticeOrder(page, label) {
 
 async function assertPracticeTypeTransition(page) {
   const seeded = await page.evaluate((key) => {
-    const bank = window.QUIZ_BANK?.questions || [];
+    const seen = new Set();
+    const idCounts = new Map();
+    const bank = (window.QUIZ_BANK?.questions || []).flatMap((question) => {
+      const signature = `${question.id}|${(question.options || []).map((option) => `${option.key}:${option.text}`).join(",")}`;
+      if (seen.has(signature)) return [];
+      seen.add(signature);
+      const count = (idCounts.get(question.id) || 0) + 1;
+      idCounts.set(question.id, count);
+      return [{ ...question, id: count > 1 ? `${question.id}__v${count - 1}` : question.id }];
+    });
     const transitionIndex = bank.findIndex((question, index) => index < bank.length - 1 && question.type !== bank[index + 1].type);
     if (transitionIndex < 0) throw new Error("source bank has no adjacent type transition");
     const state = JSON.parse(localStorage.getItem(key) || "{}");
@@ -406,7 +415,16 @@ async function assertScopedPracticeOrdinal(page, label) {
   const result = await page.evaluate(({ scopeLabel, key }) => {
     const questionText = document.querySelector(".question-card .question-text")?.textContent || "";
     const normalizedText = questionText.replace(/(全选|正确)$/u, "").trim();
-    const bank = window.QUIZ_BANK?.questions || [];
+    const seen = new Set();
+    const idCounts = new Map();
+    const bank = (window.QUIZ_BANK?.questions || []).flatMap((question) => {
+      const signature = `${question.id}|${(question.options || []).map((option) => `${option.key}:${option.text}`).join(",")}`;
+      if (seen.has(signature)) return [];
+      seen.add(signature);
+      const count = (idCounts.get(question.id) || 0) + 1;
+      idCounts.set(question.id, count);
+      return [{ ...question, id: count > 1 ? `${question.id}__v${count - 1}` : question.id }];
+    });
     const categories = window.QUIZ_BANK?.categories || [];
     const categoryOrder = new Map(categories.map((category, index) => [category.id, index]));
     const sourceOrder = new Map(bank.map((question, index) => [question.id, index]));

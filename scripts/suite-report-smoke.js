@@ -19,6 +19,7 @@ function getConfig() {
     targetUrl: process.env.TARGET_URL || DEFAULT_URL,
     staffId: process.env.STAFF_ID || DEFAULT_STAFF_ID,
     chromePath: process.env.CHROME_PATH || DEFAULT_CHROME_PATH,
+    browserName: process.env.BROWSER === "webkit" ? "webkit" : "chromium",
     headed: process.env.HEADED === "1"
   };
 }
@@ -133,8 +134,8 @@ async function assertSuitePrimaryDockOrder(page, label) {
     "next-suite",
     "suite-submit-answer",
     "suite-reveal-answer",
-    "toggle-study-mode",
     "finish-suite",
+    "suite-submit-answer",
     "previous-suite",
     "next-suite"
   ];
@@ -142,6 +143,37 @@ async function assertSuitePrimaryDockOrder(page, label) {
     throw new Error(`${label}: suite dock primary order changed: ${JSON.stringify(primaryActions)}`);
   }
   return primaryActions;
+}
+
+async function assertMirroredSubmitWorks(page) {
+  let foundMultiple = false;
+  for (let step = 0; step < 155; step += 1) {
+    const type = (await page.locator(".question-head .badge.green").first().innerText()).trim();
+    if (type === "多选") {
+      foundMultiple = true;
+      break;
+    }
+    await page.locator('button[data-action="next-suite"]').first().click({ timeout: 7000 });
+    await page.waitForTimeout(20);
+  }
+  if (!foundMultiple) throw new Error("suite run: could not reach a multiple-choice question");
+
+  const option = page.locator('button[data-action="suite-option"]').first();
+  await option.click({ timeout: 7000 });
+  await page.waitForTimeout(150);
+
+  const submits = page.locator('button[data-action="suite-submit-answer"]');
+  if ((await submits.count()) !== 2) throw new Error("suite run: expected two submit buttons");
+  if (await submits.nth(0).isDisabled()) throw new Error("suite run: left submit stayed disabled after selecting an option");
+  if (await submits.nth(1).isDisabled()) throw new Error("suite run: right submit stayed disabled after selecting an option");
+
+  await submits.nth(1).click({ timeout: 7000 });
+  await page.waitForTimeout(250);
+  if (!(await submits.nth(0).isDisabled())) throw new Error("suite run: left submit stayed enabled after submission");
+  if (!(await submits.nth(1).isDisabled())) throw new Error("suite run: right submit stayed enabled after submission");
+  if (!(await page.locator(".answer-compare").count())) throw new Error("suite run: right submit did not reveal the answer result");
+
+  return { count: 2, submittedFrom: "right" };
 }
 
 async function assertSuiteReportLayout(page, label) {
@@ -243,9 +275,12 @@ async function assertQuestionRunVisible(page, label) {
 }
 
 async function run() {
-  const { chromium, devices } = requirePlaywright();
+  const { chromium, webkit, devices } = requirePlaywright();
   const config = getConfig();
-  const browser = await chromium.launch({
+  const browserType = config.browserName === "webkit" ? webkit : chromium;
+  const browser = await browserType.launch(config.browserName === "webkit" ? {
+    headless: !config.headed
+  } : {
     headless: !config.headed,
     executablePath: config.chromePath
   });
@@ -271,6 +306,7 @@ async function run() {
     );
     results.push({ step: "suite-run-dock", dock: await assertDockHealthy(page, "suite run") });
     results.push({ step: "suite-run-primary-order", primary: await assertSuitePrimaryDockOrder(page, "suite run") });
+    results.push({ step: "suite-run-mirrored-submit", submit: await assertMirroredSubmitWorks(page) });
 
     await clickButton(page, 'button[data-action="finish-suite"]:not([disabled])', "finish suite");
     await page.waitForSelector(".suite-report-wrap", { timeout: 7000 });

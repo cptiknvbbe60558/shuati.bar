@@ -70,18 +70,18 @@
 	  const SUITE_TOTAL_POINTS = SUITE_TYPES.reduce((sum, key) => sum + SUITE_RULE[key].count * SUITE_RULE[key].points, 0);
 	  const SPECIAL_REVIEW_MODES = [];
   const FULL_TYPE_COUNTS = {
-    single: 1204,
-    multiple: 965,
-    judge: 974
+    single: 1174,
+    multiple: 940,
+    judge: 915
   };
-  const ASSET_VERSION = "20260712_1525_practice_scope_resume";
+  const ASSET_VERSION = "20260714_suite_double_submit";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
   const PROTECTED_SYNC_MIN_INTERVAL_MS = 120000;
   const PROTECTED_SYNC_RETRY_MS = 30 * 60 * 1000;
 
-  let questions = bank.questions || [];
+  let questions = uniqueQuestions(bank.questions || []);
   let categories = bank.categories || [];
   let questionById = new Map(questions.map((question) => [question.id, question]));
   let questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
@@ -1153,16 +1153,16 @@
 
 	    const selected = suite.answers?.[question.id] || [];
 	    const outcome = suite.outcomes?.[question.id];
-	    const revealed = Boolean(suite.revealed?.[question.id] || outcome || state.studyMode);
+	    const revealed = Boolean(suite.revealed?.[question.id] || outcome);
 	    const lastCorrect = outcome ? outcome.correct : state.progress[question.id]?.lastCorrect;
-	    const canSubmit = selected.length && !revealed && !state.studyMode;
+	    const canSubmit = selected.length && !revealed;
 
 	    return `
 	      <section class="practice-screen suite-screen">
 	        <div class="practice-study-area">
 	          ${renderSuiteQuestion(question, suite.index, ids.length, selected, revealed, lastCorrect)}
 	        </div>
-	        ${renderSuiteDock({ revealed, canSubmit, studyMode: state.studyMode })}
+	        ${renderSuiteDock({ revealed, canSubmit })}
 	      </section>
 	    `;
 	  }
@@ -1180,7 +1180,7 @@
 	    return html.replaceAll('data-action="option"', 'data-action="suite-option"');
 	  }
 
-	  function renderSuiteDock({ revealed, canSubmit, disabledNavigation = false, studyMode = false }) {
+	  function renderSuiteDock({ revealed, canSubmit, disabledNavigation = false }) {
 	    return `
 	      <div class="practice-dock suite-dock">
 	        <div class="toolbar practice-toolbar dock-primary-row">
@@ -1188,8 +1188,8 @@
 	          <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
 	          <button class="solid-button dock-submit-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
 	          <button class="soft-button" data-action="suite-reveal-answer" ${revealed || disabledNavigation ? "disabled" : ""}>答案</button>
-	          <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
 	          <button class="soft-button" data-action="finish-suite" ${disabledNavigation ? "disabled" : ""}>交卷</button>
+	          <button class="solid-button dock-submit-button" data-action="suite-submit-answer" ${canSubmit ? "" : "disabled"}>提交</button>
 	          <button class="soft-button nav-icon-button" data-action="previous-suite" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
 	          <button class="soft-button nav-icon-button" data-action="next-suite" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
 	        </div>
@@ -2187,7 +2187,7 @@
       return;
     }
     const currentIndex = Math.max(0, list.findIndex((question) => question.id === state.currentId));
-    const nextIndex = nextDistinctPracticeIndex(list, currentIndex, action);
+    const nextIndex = nextPracticeIndex(list, currentIndex, action);
     state.currentId = list[nextIndex].id;
     saveAndRender();
   }
@@ -2200,27 +2200,6 @@
     }
     const step = action === "previous-question" ? -1 : 1;
     return (currentIndex + step + list.length) % list.length;
-  }
-
-  function nextDistinctPracticeIndex(list, currentIndex, action) {
-    if (list.length <= 1) return currentIndex;
-    const currentId = list[currentIndex]?.id || state.currentId;
-    if (action === "random-question") {
-      const candidates = list
-        .map((question, index) => ({ question, index }))
-        .filter((item) => item.question.id !== currentId);
-      return candidates.length
-        ? candidates[Math.floor(Math.random() * candidates.length)].index
-        : currentIndex;
-    }
-
-    const step = action === "previous-question" ? -1 : 1;
-    let nextIndex = currentIndex;
-    for (let offset = 0; offset < list.length; offset += 1) {
-      nextIndex = (nextIndex + step + list.length) % list.length;
-      if (list[nextIndex].id !== currentId) return nextIndex;
-    }
-    return currentIndex;
   }
 
   function startExam300(kind = "random") {
@@ -2353,6 +2332,7 @@
 	    if (!ids.length) return;
 	    applyPaperOptionOrders(paper);
 	    state.mode = "suite";
+	    state.studyMode = false;
 	    state.exam = null;
 	    state.examStartMenuOpen = false;
 	    state.utilityPanel = "";
@@ -3093,11 +3073,19 @@
 
   function uniqueQuestions(source) {
     const seen = new Set();
+    const idCounts = new Map();
     const unique = [];
     for (const question of source) {
-      if (seen.has(question.id)) continue;
-      seen.add(question.id);
-      unique.push(question);
+      const key = question.id + "|" + question.options.map((opt) => opt.key + ":" + opt.text).join(",");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const count = (idCounts.get(question.id) || 0) + 1;
+      idCounts.set(question.id, count);
+      if (count > 1) {
+        unique.push({ ...question, id: question.id + "__v" + (count - 1) });
+      } else {
+        unique.push(question);
+      }
     }
     return unique;
   }
@@ -3721,7 +3709,7 @@
       }
       const modeBeforeFullLoad = state.mode;
       bank = nextBank;
-      questions = bank.questions || [];
+      questions = uniqueQuestions(bank.questions || []);
       categories = bank.categories || [];
       questionById = new Map(questions.map((question) => [question.id, question]));
       questionOrdinalById = new Map(questions.map((question, index) => [question.id, index + 1]));
