@@ -74,11 +74,15 @@
     multiple: 940,
     judge: 915
   };
-  const ASSET_VERSION = "20260714_suite_double_submit";
+  const ASSET_VERSION = "20260714_cloud_session_resume";
   const PROTECTED_CLOUD_SYNC_ENABLED = typeof fetch === "function";
   const PROTECTED_STATE_ENDPOINT = "/api/state";
+  const SESSION_STATE_ENDPOINT = "/api/session";
   const PROTECTED_SYNC_DEBOUNCE_MS = 8000;
   const PROTECTED_SYNC_MIN_INTERVAL_MS = 120000;
+  const PROTECTED_URGENT_SYNC_DELAY_MS = 2500;
+  const SESSION_SYNC_DEBOUNCE_MS = 700;
+  const SESSION_SYNC_RETRY_MS = 10 * 1000;
   const PROTECTED_SYNC_RETRY_MS = 30 * 60 * 1000;
 
   let questions = uniqueQuestions(bank.questions || []);
@@ -93,12 +97,17 @@
   let fullBankLoadStartedAt = 0;
   let fullBankRetryTimer = null;
   let remoteSyncTimer = null;
+  let remoteSyncTimerDueAt = 0;
   let remoteSyncReady = false;
   let remoteSyncStaffId = "";
   let remoteSyncLastAttemptAt = 0;
   let remoteSyncBackoffUntil = 0;
   let protectedSyncDirty = false;
   let protectedSyncRevision = 0;
+  let sessionSyncTimer = null;
+  let sessionSyncDirty = false;
+  let sessionSyncRevision = 0;
+  let sessionSyncSaving = false;
   let examTimer = null;
   if ("scrollRestoration" in history) {
     history.scrollRestoration = "manual";
@@ -126,7 +135,14 @@
     categoryMenuOpen: false,
     examStartMenuOpen: false,
     studyMode: false,
-    wrongPractice: false,
+	    wrongPractice: false,
+	    wrongPracticeSession: {
+	      currentId: "",
+	      drafts: {},
+	      revealed: {},
+	      studyMode: false,
+	      updatedAt: ""
+	    },
     specialIndexes: {},
     examSize: 50,
 	    lastPracticeMode: "practice",
@@ -139,7 +155,8 @@
 	    },
 	    exam: null,
 	    suitePapers: [],
-	    suite: null
+	    suite: null,
+	    suiteSessionUpdatedAt: ""
 	  };
 
   let state = loadState();
@@ -177,6 +194,7 @@
     loadFullQuestionBank();
     initializeRemoteState();
   }
+  setupSessionPersistence();
   registerServiceWorker();
 
   function loadState() {
@@ -231,6 +249,7 @@
 	        categoryMenuOpen: false,
 	        examStartMenuOpen: false,
 	        studyMode: Boolean(saved.studyMode),
+	        wrongPracticeSession: normalizeWrongPracticeSession(saved.wrongPracticeSession),
 	        lastPracticeMode: saved.lastPracticeMode || defaultState.lastPracticeMode,
 	        lastPracticeId: saved.lastPracticeId || defaultState.lastPracticeId,
 	        practiceLocations: {
@@ -241,7 +260,10 @@
 	            : {})
 	        },
 	        suitePapers: Array.isArray(saved.suitePapers) ? saved.suitePapers : [],
-	        suite: saved.suite || null
+	        suite: saved.suite || null,
+	        suiteSessionUpdatedAt: typeof saved.suiteSessionUpdatedAt === "string" && saved.suiteSessionUpdatedAt
+	          ? saved.suiteSessionUpdatedAt
+	          : (saved.suite ? (saved._savedAt || new Date().toISOString()) : "")
 	      };
     } catch {
       return { ...defaultState };
@@ -312,9 +334,21 @@
     remoteSyncStaffId = staffId;
     ensureFavoriteSyncRecords();
     try {
-      const payload = await readProtectedCloudState(staffId);
+      const [payload, sessionPayload] = await Promise.all([
+        readProtectedCloudState(staffId),
+        readSessionCloudState(staffId).catch(() => ({}))
+      ]);
       if (state.staffId !== staffId) return;
       mergeRemoteState(payload);
+      mergeWrongPracticeSession(sessionPayload.wrongPracticeSession);
+      mergeSuiteSession(sessionPayload.suiteSession);
+      const compactWrongAt = Date.parse(sessionPayload.wrongPracticeSession?.updatedAt || "") || 0;
+      const compactSuiteAt = Date.parse(sessionPayload.suiteSession?.updatedAt || "") || 0;
+      const localWrongAt = Date.parse(state.wrongPracticeSession?.updatedAt || "") || 0;
+      const localSuiteAt = Date.parse(state.suiteSessionUpdatedAt || "") || 0;
+      if (localWrongAt > compactWrongAt || localSuiteAt > compactSuiteAt) {
+        markSessionSyncDirty();
+      }
       sanitizeState();
       persistLocalState(createStorageSnapshot());
       render();
@@ -324,6 +358,7 @@
       if (state.staffId === staffId) {
         remoteSyncReady = true;
         if (protectedSyncDirty) scheduleRemoteStateSave();
+        if (sessionSyncDirty) scheduleSessionStateSave();
       }
     }
   }
@@ -336,23 +371,30 @@
 	      payload.favoriteSync || {},
       payload.favorites || {}
     );
-    state.notes = { ...(payload.notes || {}), ...(state.notes || {}) };
-    state.suiteExposure = mergeMaxNumberMap(state.suiteExposure, payload.suiteExposure || {});
-    state.suitePapers = mergeSuitePapers(state.suitePapers, payload.suitePapers || []);
-    materializeFavoritesFromSync();
-  }
+	    state.notes = { ...(payload.notes || {}), ...(state.notes || {}) };
+	    state.suiteExposure = mergeMaxNumberMap(state.suiteExposure, payload.suiteExposure || {});
+	    state.suitePapers = mergeSuitePapers(state.suitePapers, payload.suitePapers || []);
+	    mergeWrongPracticeSession(payload.wrongPracticeSession);
+	    mergeSuiteSession(payload.suiteSession);
+	    materializeFavoritesFromSync();
+	  }
 
-  function scheduleRemoteStateSave(delay = PROTECTED_SYNC_DEBOUNCE_MS) {
-    if (!remoteSyncReady || !isVerifiedStaffId(state.staffId)) return;
-    if (remoteSyncTimer) clearTimeout(remoteSyncTimer);
-    const sinceLastAttempt = remoteSyncLastAttemptAt ? Date.now() - remoteSyncLastAttemptAt : Infinity;
-    const throttleDelay = Math.max(0, PROTECTED_SYNC_MIN_INTERVAL_MS - sinceLastAttempt);
-    const backoffDelay = Math.max(0, remoteSyncBackoffUntil - Date.now());
-    remoteSyncTimer = setTimeout(saveRemoteState, Math.max(delay, throttleDelay, backoffDelay));
-  }
+	  function scheduleRemoteStateSave(delay = PROTECTED_SYNC_DEBOUNCE_MS, urgent = false) {
+	    if (!remoteSyncReady || !isVerifiedStaffId(state.staffId)) return;
+	    const sinceLastAttempt = remoteSyncLastAttemptAt ? Date.now() - remoteSyncLastAttemptAt : Infinity;
+	    const throttleDelay = urgent ? 0 : Math.max(0, PROTECTED_SYNC_MIN_INTERVAL_MS - sinceLastAttempt);
+	    const backoffDelay = Math.max(0, remoteSyncBackoffUntil - Date.now());
+	    const wait = Math.max(delay, throttleDelay, backoffDelay);
+	    const dueAt = Date.now() + wait;
+	    if (remoteSyncTimer && remoteSyncTimerDueAt <= dueAt) return;
+	    if (remoteSyncTimer) clearTimeout(remoteSyncTimer);
+	    remoteSyncTimerDueAt = dueAt;
+	    remoteSyncTimer = setTimeout(saveRemoteState, wait);
+	  }
 
-  async function saveRemoteState() {
-    remoteSyncTimer = null;
+	  async function saveRemoteState() {
+	    remoteSyncTimer = null;
+	    remoteSyncTimerDueAt = 0;
     const staffId = state.staffId;
     if (
       !protectedSyncDirty
@@ -386,15 +428,71 @@
     }
   }
 
-  function markProtectedSyncDirty() {
-    protectedSyncDirty = true;
-    protectedSyncRevision += 1;
+	  function markProtectedSyncDirty(options = {}) {
+	    protectedSyncDirty = true;
+	    protectedSyncRevision += 1;
+	    if (options.urgent && remoteSyncReady && remoteSyncStaffId === state.staffId) {
+	      scheduleRemoteStateSave(PROTECTED_URGENT_SYNC_DELAY_MS, true);
+	    }
+	  }
+
+  function markSessionSyncDirty() {
+    sessionSyncDirty = true;
+    sessionSyncRevision += 1;
+    if (remoteSyncReady && remoteSyncStaffId === state.staffId) {
+      scheduleSessionStateSave();
+    }
+  }
+
+  function scheduleSessionStateSave(delay = SESSION_SYNC_DEBOUNCE_MS) {
+    if (!remoteSyncReady || !isVerifiedStaffId(state.staffId)) return;
+    if (sessionSyncTimer) clearTimeout(sessionSyncTimer);
+    sessionSyncTimer = setTimeout(saveSessionState, delay);
+  }
+
+  async function saveSessionState() {
+    sessionSyncTimer = null;
+    if (
+      sessionSyncSaving
+      || !sessionSyncDirty
+      || !remoteSyncReady
+      || !isVerifiedStaffId(state.staffId)
+      || remoteSyncStaffId !== state.staffId
+    ) return;
+    const staffId = state.staffId;
+    const revision = sessionSyncRevision;
+    sessionSyncSaving = true;
+    try {
+      await writeSessionCloudState(staffId, buildSessionCloudPayload());
+      if (state.staffId === staffId && revision === sessionSyncRevision) {
+        sessionSyncDirty = false;
+      }
+    } catch {
+      if (state.staffId === staffId) scheduleSessionStateSave(SESSION_SYNC_RETRY_MS);
+    } finally {
+      sessionSyncSaving = false;
+      if (state.staffId === staffId && sessionSyncDirty && !sessionSyncTimer) {
+        scheduleSessionStateSave();
+      }
+    }
+  }
+
+  function buildSessionCloudPayload() {
+    return {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      wrongPracticeSession: normalizeWrongPracticeSession(state.wrongPracticeSession),
+      suiteSession: {
+        value: normalizeSuiteSession(state.suite),
+        updatedAt: state.suiteSessionUpdatedAt || ""
+      }
+    };
   }
 
   function buildProtectedCloudPayload() {
     ensureFavoriteSyncRecords();
     return {
-	      version: 3,
+	      version: 4,
 	      updatedAt: new Date().toISOString(),
 	      favorites: state.favorites,
 	      favoriteSync: state.favoriteSync,
@@ -402,7 +500,12 @@
 	      mastery: state.mastery,
 	      notes: state.notes,
 	      suiteExposure: state.suiteExposure,
-	      suitePapers: state.suitePapers
+	      suitePapers: state.suitePapers,
+	      wrongPracticeSession: normalizeWrongPracticeSession(state.wrongPracticeSession),
+	      suiteSession: {
+	        value: normalizeSuiteSession(state.suite),
+	        updatedAt: state.suiteSessionUpdatedAt || ""
+	      }
 	    };
 	  }
 
@@ -414,8 +517,13 @@
       mastery: state.mastery,
       notes: state.notes,
       suiteExposure: state.suiteExposure,
-      suitePapers: state.suitePapers
-    });
+	      suitePapers: state.suitePapers,
+	      wrongPracticeSession: normalizeWrongPracticeSession(state.wrongPracticeSession),
+	      suiteSession: {
+	        value: normalizeSuiteSession(state.suite),
+	        updatedAt: state.suiteSessionUpdatedAt || ""
+	      }
+	    });
   }
 
   async function readProtectedCloudState(staffId) {
@@ -434,6 +542,17 @@
     } catch {
       return {};
     }
+  }
+
+  async function readSessionCloudState(staffId) {
+    const response = await fetch(`${SESSION_STATE_ENDPOINT}/${encodeURIComponent(staffId)}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok) return {};
+    const envelope = await response.json();
+    if (!envelope?.success || !envelope.value) return {};
+    return typeof envelope.value === "object" ? envelope.value : {};
   }
 
   async function writeProtectedCloudState(staffId, payload) {
@@ -461,6 +580,24 @@
     }
   }
 
+  async function writeSessionCloudState(staffId, payload, keepalive = false) {
+    const response = await fetch(
+      `${SESSION_STATE_ENDPOINT}/${encodeURIComponent(staffId)}`,
+      {
+        method: "POST",
+        cache: "no-store",
+        keepalive,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+    if (keepalive) return;
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || "session_cloud_write_failed");
+    }
+  }
+
   function sanitizeState() {
     if (!isVerifiedStaffId(state.staffId)) state.staffId = "";
     state.selectedCategories = (state.selectedCategories || []).filter((id) =>
@@ -481,8 +618,9 @@
     }
     state.categoryMenuOpen = Boolean(state.categoryMenuOpen);
     state.examStartMenuOpen = Boolean(state.examStartMenuOpen);
-    state.studyMode = Boolean(state.studyMode);
-    state.wrongPractice = Boolean(state.wrongPractice);
+	    state.studyMode = Boolean(state.studyMode);
+	    state.wrongPractice = Boolean(state.wrongPractice);
+	    state.wrongPracticeSession = normalizeWrongPracticeSession(state.wrongPracticeSession);
     if (!PRACTICE_MODES.includes(state.lastPracticeMode)) state.lastPracticeMode = "practice";
     state.practiceLocations = state.practiceLocations && typeof state.practiceLocations === "object"
       ? state.practiceLocations
@@ -506,6 +644,9 @@
 	      : {};
 	    state.suitePapers = normalizeSuitePapers(state.suitePapers);
 	    state.suite = normalizeSuiteSession(state.suite);
+	    state.suiteSessionUpdatedAt = typeof state.suiteSessionUpdatedAt === "string"
+	      ? state.suiteSessionUpdatedAt
+	      : "";
 	    state.favoriteSync = state.favoriteSync && typeof state.favoriteSync === "object"
 	      ? state.favoriteSync
 	      : {};
@@ -847,7 +988,9 @@
 
     const specialMode = isSpecialReviewMode();
     const specialIndex = specialMode ? getSpecialReviewIndex(list) : -1;
-    const question = specialMode ? list[specialIndex] : (questionById.get(state.currentId) || list[0]);
+    const question = specialMode
+      ? list[specialIndex]
+      : (list.find((item) => item.id === state.currentId) || list[0]);
     const index = specialMode ? specialIndex : Math.max(0, list.findIndex((item) => item.id === question.id));
     const last = state.progress[question.id];
     const indexLabel = `${index + 1}/${list.length}`;
@@ -870,23 +1013,26 @@
             lastCorrect: last ? last.lastCorrect : null
           })}
         </div>
-        ${renderPracticeDock({
-          revealed,
-          canSubmit: !wrongReview && selected.length && !revealed && !state.studyMode,
-          allowReveal: !wrongReview,
-          studyMode: wrongReview ? false : state.studyMode
-        })}
+	      ${renderPracticeDock({
+	        revealed,
+	        canSubmit: !wrongReview && selected.length && !revealed && !state.studyMode,
+	        allowReveal: !wrongReview,
+	        studyMode: wrongReview ? false : state.studyMode,
+	        showWrongRestart: state.mode === "wrong" && state.wrongPractice
+	      })}
       </section>
     `;
   }
 
-  function renderPracticeDock({ revealed, canSubmit, disabledNavigation = false, allowReveal = true, studyMode = false }) {
+	function renderPracticeDock({ revealed, canSubmit, disabledNavigation = false, allowReveal = true, studyMode = false, showWrongRestart = false }) {
     return `
       <div class="practice-dock">
         <div class="toolbar practice-toolbar dock-primary-row">
           <button class="soft-button nav-icon-button" data-action="previous-question" aria-label="上一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">◀</span></button>
           <button class="soft-button nav-icon-button" data-action="next-question" aria-label="下一题" ${disabledNavigation ? "disabled" : ""}><span aria-hidden="true">▶</span></button>
-          <button class="solid-button dock-submit-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
+	        ${showWrongRestart
+	          ? '<button class="soft-button" data-action="restart-wrong-practice">重做</button>'
+	          : `<button class="solid-button dock-submit-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>`}
           <button class="soft-button" data-action="reveal-answer" ${revealed || disabledNavigation || !allowReveal ? "disabled" : ""}>答案</button>
           <button class="soft-button memorize-button ${studyMode ? "active" : ""}" data-action="toggle-study-mode" aria-pressed="${studyMode ? "true" : "false"}">背题</button>
           <button class="solid-button dock-submit-button" data-action="submit-practice" ${canSubmit ? "" : "disabled"}>提交</button>
@@ -986,14 +1132,14 @@
     `;
   }
 
-  function renderWrongViewTabs() {
-    return `
-      <div class="header-type-tabs wrong-view-tabs" role="group" aria-label="错题模式">
-        <button class="header-type-tab${state.wrongPractice ? "" : " active"}" type="button" data-action="set-wrong-view" data-view="review">查看</button>
-        <button class="header-type-tab${state.wrongPractice ? " active" : ""}" type="button" data-action="set-wrong-view" data-view="practice">重做</button>
-      </div>
-    `;
-  }
+	function renderWrongViewTabs() {
+	  return `
+	    <div class="header-type-tabs wrong-view-tabs" role="group" aria-label="错题模式">
+	      <button class="header-type-tab${state.wrongPractice ? "" : " active"}" type="button" data-action="set-wrong-view" data-view="review">查看</button>
+	      <button class="header-type-tab${state.wrongPractice ? " active" : ""}" type="button" data-action="set-wrong-view" data-view="practice">练习</button>
+	    </div>
+	  `;
+	}
 
   function questionDensity(question) {
     const questionLength = String(question.question || "").length;
@@ -1639,11 +1785,12 @@
       return;
     }
 
-    if (action === "set-mode") {
-      const nextMode = target.dataset.mode;
-      if (!VALID_MODES.some(([mode]) => mode === nextMode)) return;
-      const previousMode = state.mode;
-      if (PRACTICE_MODES.includes(previousMode)) rememberPracticeLocation();
+	    if (action === "set-mode") {
+	      const nextMode = target.dataset.mode;
+	      if (!VALID_MODES.some(([mode]) => mode === nextMode)) return;
+	      const previousMode = state.mode;
+	      if (previousMode === "wrong" && state.wrongPractice) captureWrongPracticeSession();
+	      if (PRACTICE_MODES.includes(previousMode)) rememberPracticeLocation();
       if (nextMode === "wrong") {
         state.mode = "wrong";
         state.wrongPractice = false;
@@ -1667,8 +1814,11 @@
         return;
       }
       if (nextMode === state.mode) {
-        if (nextMode === "suite") {
-          if (state.suite?.submitted || !state.suite?.active) state.suite = null;
+	        if (nextMode === "suite") {
+	          if (state.suite?.submitted || !state.suite?.active) {
+	            state.suite = null;
+	            touchSuiteSession();
+	          }
         } else if (nextMode === "exam300") {
           state.exam = null;
         }
@@ -1753,12 +1903,13 @@
       return;
     }
 
-    if (action === "option") {
+	    if (action === "option") {
       const question = currentPracticeQuestion();
       if (!question) return;
-      updateDraft(question.id, target.dataset.key);
-      autoSubmitPracticeIfReady(question);
-      saveAndRender();
+	      updateDraft(question.id, target.dataset.key);
+	      autoSubmitPracticeIfReady(question);
+	      captureWrongPracticeSession();
+	      saveAndRender();
       return;
     }
 
@@ -1767,16 +1918,18 @@
       return;
     }
 
-    if (action === "reveal-answer") {
+	    if (action === "reveal-answer") {
       const question = currentPracticeQuestion();
       if (!question) return;
-      state.revealed[question.id] = true;
-      saveAndRender();
+	      state.revealed[question.id] = true;
+	      captureWrongPracticeSession();
+	      saveAndRender();
       return;
     }
 
-    if (action === "toggle-study-mode") {
-      state.studyMode = !state.studyMode;
+	    if (action === "toggle-study-mode") {
+	      state.studyMode = !state.studyMode;
+	      captureWrongPracticeSession();
       saveAndRender();
       resetViewportScroll();
       return;
@@ -1834,6 +1987,7 @@
 	      };
 	      state.examStartMenuOpen = false;
 	      state.utilityPanel = "";
+	      touchSuiteSession();
 	      saveAndRender();
 	      resetViewportScroll();
 	      return;
@@ -1841,6 +1995,7 @@
 
 	    if (action === "suite-home") {
 	      state.suite = null;
+	      touchSuiteSession();
 	      saveAndRender();
 	      resetViewportScroll();
 	      return;
@@ -1950,17 +2105,23 @@
       return;
     }
 
-    if (action === "retry-wrong") {
-      startWrongPractice();
-      return;
-    }
+	    if (action === "retry-wrong") {
+	      startWrongPractice();
+	      return;
+	    }
+
+	    if (action === "restart-wrong-practice") {
+	      startWrongPractice({ restart: true });
+	      return;
+	    }
 
     if (action === "set-wrong-view") {
-      if (target.dataset.view === "practice") {
-        startWrongPractice();
-        return;
-      }
-      state.mode = "wrong";
+	      if (target.dataset.view === "practice") {
+	        startWrongPractice();
+	        return;
+	      }
+	      captureWrongPracticeSession();
+	      state.mode = "wrong";
       state.wrongPractice = false;
       state.exam = null;
       state.examStartMenuOpen = false;
@@ -2020,24 +2181,42 @@
     }
   }
 
-  function startWrongPractice() {
-    const wrongIds = activeWrongIds();
-    if (!wrongIds.length) return;
-    state.mode = "wrong";
-    state.wrongPractice = true;
+	function startWrongPractice(options = {}) {
+	  const wrongIds = activeWrongIds();
+	  if (!wrongIds.length) return;
+	  const restart = Boolean(options.restart);
+	  const session = normalizeWrongPracticeSession(state.wrongPracticeSession);
+	  state.mode = "wrong";
+	  state.wrongPractice = true;
     state.exam = null;
     state.examStartMenuOpen = false;
     state.utilityPanel = "";
-    state.categoryMenuOpen = false;
-    state.selectedTypes = [...TYPES];
-    for (const id of wrongIds) {
-      delete state.drafts[id];
-      delete state.revealed[id];
-    }
-    state.currentId = isActiveWrong(state.currentId) ? state.currentId : wrongIds[0];
-    saveAndRender();
-    resetViewportScroll();
-  }
+	  state.categoryMenuOpen = false;
+	  state.selectedTypes = [...TYPES];
+	  if (restart || !session.updatedAt) {
+	    for (const id of wrongIds) {
+	      delete state.drafts[id];
+	      delete state.revealed[id];
+	    }
+	    state.studyMode = false;
+	    state.currentId = wrongIds[0];
+	    state.wrongPracticeSession = {
+	      currentId: state.currentId,
+	      drafts: {},
+	      revealed: {},
+	      studyMode: false,
+	      updatedAt: new Date().toISOString()
+	    };
+	  } else {
+	    hydrateWrongPracticeSession(session);
+	    state.currentId = wrongIds.includes(session.currentId) ? session.currentId : wrongIds[0];
+	    captureWrongPracticeSession();
+	  }
+	  markProtectedSyncDirty({ urgent: true });
+	  markSessionSyncDirty();
+	  saveAndRender();
+	  resetViewportScroll();
+	}
 
   function onInput(event) {
     const target = event.target;
@@ -2113,10 +2292,11 @@
     if (!question) return;
     const selected = getDraft(question.id);
     if (!selected.length) return;
-    const correct = isCorrect(question, selected);
-    recordAttempt(question.id, selected, correct);
-    state.revealed[question.id] = true;
-    saveAndRender();
+	  const correct = isCorrect(question, selected);
+	  recordAttempt(question.id, selected, correct);
+	  state.revealed[question.id] = true;
+	  captureWrongPracticeSession();
+	  saveAndRender();
   }
 
   function autoSubmitPracticeIfReady(question) {
@@ -2186,11 +2366,48 @@
       saveAndRender();
       return;
     }
-    const currentIndex = Math.max(0, list.findIndex((question) => question.id === state.currentId));
-    const nextIndex = nextPracticeIndex(list, currentIndex, action);
-    state.currentId = list[nextIndex].id;
-    saveAndRender();
-  }
+	  const foundIndex = list.findIndex((question) => question.id === state.currentId);
+	  const currentIndex = foundIndex >= 0
+	    ? foundIndex
+	    : (action === "previous-question" ? 0 : -1);
+	  const nextIndex = nextPracticeIndex(list, currentIndex, action);
+	  state.currentId = list[nextIndex].id;
+	  captureWrongPracticeSession();
+	  saveAndRender();
+	}
+
+	function captureWrongPracticeSession() {
+	  if (state.mode !== "wrong" || !state.wrongPractice) return;
+	  const wrongIds = new Set(activeWrongIds());
+	  const drafts = {};
+	  const revealed = {};
+	  for (const id of wrongIds) {
+	    const selected = getDraft(id);
+	    if (selected.length) drafts[id] = [...selected];
+	    if (state.revealed[id]) revealed[id] = true;
+	  }
+	  state.wrongPracticeSession = {
+	    currentId: wrongIds.has(state.currentId) ? state.currentId : "",
+	    drafts,
+	    revealed,
+	    studyMode: Boolean(state.studyMode),
+	    updatedAt: new Date().toISOString()
+	  };
+	  markSessionSyncDirty();
+	  markProtectedSyncDirty({ urgent: true });
+	}
+
+	function hydrateWrongPracticeSession(raw) {
+	  const session = normalizeWrongPracticeSession(raw);
+	  const wrongIds = new Set(activeWrongIds());
+	  for (const id of wrongIds) {
+	    delete state.drafts[id];
+	    delete state.revealed[id];
+	    if (session.drafts[id]?.length) state.drafts[id] = [...session.drafts[id]];
+	    if (session.revealed[id]) state.revealed[id] = true;
+	  }
+	  state.studyMode = session.studyMode;
+	}
 
   function nextPracticeIndex(list, currentIndex, action) {
     if (list.length <= 1) return currentIndex;
@@ -2317,6 +2534,7 @@
 	    markSuiteExposure(picked.ids);
 	    markWrongReviewExposure(picked.priorityIds);
 	    startSuiteRun(paper.id, "full", { skipSave: true });
+	    touchSuiteSession();
 	    saveAndRender();
 	    resetViewportScroll();
 	  }
@@ -2350,6 +2568,7 @@
 	      startedAt: Date.now(),
 	      reviewWrongOnly: false
 	    };
+	    touchSuiteSession();
 	    if (!options.skipSave) {
 	      saveAndRender();
 	      resetViewportScroll();
@@ -2459,6 +2678,7 @@
 	    if (!question || suite.outcomes?.[question.id]) return;
 	    const answer = suite.answers?.[question.id] || [];
 	    suite.answers[question.id] = updateSelection(question, answer, key);
+	    touchSuiteSession();
 	    if (question.type !== "多选") submitSuiteCurrent();
 	    else saveAndRender();
 	  }
@@ -2479,6 +2699,7 @@
 	      at: new Date().toISOString()
 	    };
 	    recordAttempt(question.id, selected, correct);
+	    touchSuiteSession();
 	    saveAndRender();
 	  }
 
@@ -2497,6 +2718,7 @@
 	      at: new Date().toISOString()
 	    };
 	    recordAttempt(question.id, selected, false);
+	    touchSuiteSession();
 	    saveAndRender();
 	  }
 
@@ -2545,6 +2767,7 @@
 	      submitted: true,
 	      reviewWrongOnly: false
 	    };
+	    touchSuiteSession();
 	    saveAndRender();
 	    resetViewportScroll();
 	  }
@@ -2555,6 +2778,7 @@
 	    if (!suite || suite.submitted || !ids.length) return;
 	    const delta = action === "previous-suite" ? -1 : 1;
 	    suite.index = (suite.index + delta + ids.length) % ids.length;
+	    touchSuiteSession();
 	    saveAndRender();
 	  }
 
@@ -2602,6 +2826,13 @@
 	      submitted: true,
 	      reviewWrongOnly
 	    };
+	    touchSuiteSession();
+	  }
+
+	  function touchSuiteSession() {
+	    state.suiteSessionUpdatedAt = new Date().toISOString();
+	    markSessionSyncDirty();
+	    markProtectedSyncDirty({ urgent: true });
 	  }
 
 	  function latestSuiteAttempt(paper) {
@@ -3133,7 +3364,7 @@
     const list = getModeQuestions(state.mode, getBaseFilteredQuestions());
     if (!list.length) return null;
     if (isSpecialReviewMode()) return list[getSpecialReviewIndex(list)] || null;
-    return questionById.get(state.currentId) || list[0] || null;
+    return list.find((question) => question.id === state.currentId) || list[0] || null;
   }
 
   function modeCount(mode) {
@@ -3502,6 +3733,37 @@
 	    };
 	  }
 
+	  function normalizeWrongPracticeSession(raw) {
+	    const source = raw && typeof raw === "object" ? raw : {};
+	    return {
+	      currentId: typeof source.currentId === "string" ? source.currentId : "",
+	      drafts: normalizeAnswerMap(source.drafts),
+	      revealed: normalizeBooleanMap(source.revealed),
+	      studyMode: Boolean(source.studyMode),
+	      updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : ""
+	    };
+	  }
+
+	  function mergeWrongPracticeSession(remoteRaw) {
+	    if (!remoteRaw || typeof remoteRaw !== "object") return;
+	    const local = normalizeWrongPracticeSession(state.wrongPracticeSession);
+	    const remote = normalizeWrongPracticeSession(remoteRaw);
+	    const localAt = Date.parse(local.updatedAt || "") || 0;
+	    const remoteAt = Date.parse(remote.updatedAt || "") || 0;
+	    if (remoteAt <= localAt) return;
+	    state.wrongPracticeSession = remote;
+	    if (state.mode === "wrong" && state.wrongPractice) hydrateWrongPracticeSession(remote);
+	  }
+
+	  function mergeSuiteSession(remoteRaw) {
+	    if (!remoteRaw || typeof remoteRaw !== "object") return;
+	    const remoteAt = Date.parse(remoteRaw.updatedAt || "") || 0;
+	    const localAt = Date.parse(state.suiteSessionUpdatedAt || "") || 0;
+	    if (remoteAt <= localAt) return;
+	    state.suite = normalizeSuiteSession(remoteRaw.value);
+	    state.suiteSessionUpdatedAt = remoteRaw.updatedAt || "";
+	  }
+
 	  function normalizeAnswerMap(raw) {
 	    const result = {};
 	    for (const [id, values] of Object.entries(raw || {})) {
@@ -3556,6 +3818,23 @@
     sanitizeState();
     saveState();
     render();
+  }
+
+  function setupSessionPersistence() {
+    const flush = () => {
+      if (state.mode === "wrong" && state.wrongPractice) captureWrongPracticeSession();
+      persistLocalState(createStorageSnapshot());
+      if (!sessionSyncDirty || !isVerifiedStaffId(state.staffId)) return;
+      if (sessionSyncTimer) {
+        clearTimeout(sessionSyncTimer);
+        sessionSyncTimer = null;
+      }
+      writeSessionCloudState(state.staffId, buildSessionCloudPayload(), true).catch(() => {});
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
   }
 
   function resetViewportScroll() {

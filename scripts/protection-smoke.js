@@ -60,6 +60,14 @@ async function readStoredState(page) {
 }
 
 async function seedProtectedState(page, staffId) {
+  const marker = "__protection_smoke_seed__";
+  await page.addInitScript(({ key, markerKey }) => {
+    const raw = sessionStorage.getItem(markerKey);
+    if (!raw) return;
+    localStorage.setItem(key, raw);
+    localStorage.setItem(`${key}-backup`, raw);
+    sessionStorage.removeItem(markerKey);
+  }, { key: STORAGE_KEY, markerKey: marker });
   const seed = await page.evaluate(({ key, id }) => {
     const questions = window.QUIZ_BANK.questions;
     const findByType = (type) => questions.find((question) => question.type === type);
@@ -147,8 +155,7 @@ async function seedProtectedState(page, staffId) {
       _savedAt: now,
       _assetVersion: "protection-smoke"
     };
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    sessionStorage.setItem("__protection_smoke_seed__", JSON.stringify(state));
     return {
       singleId: single.id,
       multipleId: multiple.id,
@@ -254,7 +261,7 @@ async function run() {
   let remoteValue = {};
   const apiWrites = [];
   const context = await browser.newContext({ ...devices["iPhone 14"], locale: "zh-CN" });
-  await context.route("**/api/state/**", async (route, request) => {
+  const apiHandler = async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -273,7 +280,9 @@ async function run() {
       return;
     }
     await route.continue();
-  });
+  };
+  await context.route("**/api/state/**", apiHandler);
+  await context.route("**/api/session/**", apiHandler);
   const page = await context.newPage();
   const browserErrors = [];
   page.on("pageerror", (error) => browserErrors.push(`pageerror:${error.message}`));

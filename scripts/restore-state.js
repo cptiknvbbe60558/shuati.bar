@@ -39,6 +39,13 @@ function hasUsefulState(summary) {
   );
 }
 
+function hasUsefulSession(session = {}) {
+  return Boolean(
+    session?.wrongPracticeSession?.updatedAt
+    || session?.suiteSession?.updatedAt
+  );
+}
+
 async function postState(staffId, value) {
   const response = await fetch(`${targetUrl}/api/state/${encodeURIComponent(staffId)}`, {
     method: "POST",
@@ -49,6 +56,20 @@ async function postState(staffId, value) {
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.success) {
     throw new Error(`restore failed for ${staffId}: ${response.status} ${payload?.error || ""}`);
+  }
+}
+
+async function postSession(staffId, value) {
+  if (!value || typeof value !== "object" || !Object.keys(value).length) return;
+  const response = await fetch(`${targetUrl}/api/session/${encodeURIComponent(staffId)}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value)
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.success) {
+    throw new Error(`session restore failed for ${staffId}: ${response.status} ${payload?.error || ""}`);
   }
 }
 
@@ -69,12 +90,15 @@ async function run() {
   for (const [staffId, record] of Object.entries(backup.states)) {
     const value = record?.value || {};
     const summary = summarizeState(value);
-    if (!restoreEmpty && !hasUsefulState(summary)) {
+    if (!restoreEmpty && !hasUsefulState(summary) && !hasUsefulSession(record?.session)) {
       skipped.push({ staffId, reason: "empty_state" });
       continue;
     }
     planned.push({ staffId, summary });
-    if (confirmRestore) await postState(staffId, value);
+    if (confirmRestore) {
+      await postState(staffId, value);
+      await postSession(staffId, record?.session || {});
+    }
   }
 
   console.log(JSON.stringify({

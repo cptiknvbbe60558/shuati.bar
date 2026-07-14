@@ -53,26 +53,44 @@ function hasUsefulState(summary) {
   );
 }
 
+function hasUsefulSession(session = {}) {
+  return Boolean(
+    session?.wrongPracticeSession?.updatedAt
+    || session?.suiteSession?.updatedAt
+  );
+}
+
 async function fetchState(staffId) {
-  const response = await fetch(`${targetUrl}/api/state/${encodeURIComponent(staffId)}`, {
+  const requestOptions = {
     cache: "no-store",
     headers: { Accept: "application/json" }
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.success) {
+  };
+  const [stateResponse, sessionResponse] = await Promise.all([
+    fetch(`${targetUrl}/api/state/${encodeURIComponent(staffId)}`, requestOptions),
+    fetch(`${targetUrl}/api/session/${encodeURIComponent(staffId)}`, requestOptions)
+  ]);
+  const [statePayload, sessionPayload] = await Promise.all([
+    stateResponse.json().catch(() => null),
+    sessionResponse.json().catch(() => null)
+  ]);
+  if (!stateResponse.ok || !statePayload?.success) {
     return {
       staffId,
       ok: false,
-      status: response.status,
-      error: payload?.error || "state_read_failed",
-      value: {}
+      status: stateResponse.status,
+      error: statePayload?.error || "state_read_failed",
+      value: {},
+      session: {}
     };
   }
   return {
     staffId,
     ok: true,
-    status: response.status,
-    value: payload.value || {}
+    status: stateResponse.status,
+    value: statePayload.value || {},
+    session: sessionResponse.ok && sessionPayload?.success
+      ? (sessionPayload.value || {})
+      : {}
   };
 }
 
@@ -96,9 +114,10 @@ async function run() {
       errors.push({ staffId, status: result.status, error: result.error });
       continue;
     }
-    if (!includeEmpty && !hasUsefulState(summary)) continue;
+    if (!includeEmpty && !hasUsefulState(summary) && !hasUsefulSession(result.session)) continue;
     states[staffId] = {
       value: result.value,
+      session: result.session,
       summary
     };
     for (const key of Object.keys(totals)) {
@@ -110,7 +129,7 @@ async function run() {
   const safeStamp = exportedAt.replace(/[:.]/g, "-");
   const outputPath = path.resolve(outputDir, `shuati-state-${safeStamp}.json`);
   const backup = {
-    version: 1,
+    version: 2,
     app: "shuati-bar",
     targetUrl,
     exportedAt,

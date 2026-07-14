@@ -34,7 +34,7 @@ async function installStateApiMock(context, staffId) {
     suitePapers: []
   };
   const writes = [];
-  await context.route("**/api/state/**", async (route, request) => {
+  const handler = async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -53,7 +53,9 @@ async function installStateApiMock(context, staffId) {
       return;
     }
     await route.continue();
-  });
+  };
+  await context.route("**/api/state/**", handler);
+  await context.route("**/api/session/**", handler);
   return writes;
 }
 

@@ -18,7 +18,7 @@ function requirePlaywright() {
 async function runEngine(engine, device, name) {
   const browser = await engine.launch({ headless: true });
   const context = await browser.newContext({ ...device, locale: "zh-CN" });
-  await context.route("**/api/state/**", async (route, request) => {
+  const apiHandler = async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -32,7 +32,9 @@ async function runEngine(engine, device, name) {
       contentType: "application/json",
       body: JSON.stringify({ success: true })
     });
-  });
+  };
+  await context.route("**/api/state/**", apiHandler);
+  await context.route("**/api/session/**", apiHandler);
 
   const page = await context.newPage();
   const errors = [];

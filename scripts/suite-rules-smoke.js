@@ -36,7 +36,7 @@ function assert(condition, message) {
 
 async function installStateApiMock(context) {
   const apiWrites = [];
-  await context.route("**/api/state/**", async (route, request) => {
+  const handler = async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -58,7 +58,9 @@ async function installStateApiMock(context) {
       return;
     }
     await route.continue();
-  });
+  };
+  await context.route("**/api/state/**", handler);
+  await context.route("**/api/session/**", handler);
   return apiWrites;
 }
 
@@ -90,6 +92,14 @@ async function clickRequired(page, selector, label) {
 }
 
 async function seedSuiteState(page, staffId) {
+  const marker = "__suite_rules_smoke_seed__";
+  await page.addInitScript(({ key, markerKey }) => {
+    const raw = sessionStorage.getItem(markerKey);
+    if (!raw) return;
+    localStorage.setItem(key, raw);
+    localStorage.setItem(`${key}-backup`, raw);
+    sessionStorage.removeItem(markerKey);
+  }, { key: STORAGE_KEY, markerKey: marker });
   return page.evaluate(({ key, id, target }) => {
     const byType = {};
     for (const question of window.QUIZ_BANK.questions) {
@@ -190,8 +200,7 @@ async function seedSuiteState(page, staffId) {
       _savedAt: now,
       _assetVersion: "suite-rules-smoke"
     };
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    sessionStorage.setItem("__suite_rules_smoke_seed__", JSON.stringify(state));
     return {
       streakTestId,
       streakTestAnswer,

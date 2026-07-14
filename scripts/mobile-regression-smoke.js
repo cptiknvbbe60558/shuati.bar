@@ -4,6 +4,7 @@ const DEFAULT_URL = "https://shuati.bar";
 const DEFAULT_STAFF_ID = "704001";
 const DEFAULT_CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const STORAGE_KEY = "customer-manager-quiz-state-v1";
+const STATE_SEED_MARKER = "__mobile_regression_smoke_seed__";
 
 function getConfig() {
   return {
@@ -45,7 +46,7 @@ async function clickIfReady(page, selector, label, required = true) {
 
 async function installStateApiMock(context) {
   const apiWrites = [];
-  await context.route("**/api/state/**", async (route, request) => {
+  const handler = async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -67,7 +68,9 @@ async function installStateApiMock(context) {
       return;
     }
     await route.continue();
-  });
+  };
+  await context.route("**/api/state/**", handler);
+  await context.route("**/api/session/**", handler);
   return apiWrites;
 }
 
@@ -193,28 +196,59 @@ async function assertPracticeTypeTransition(page) {
       idCounts.set(question.id, count);
       return [{ ...question, id: count > 1 ? `${question.id}__v${count - 1}` : question.id }];
     });
-    const transitionIndex = bank.findIndex((question, index) => index < bank.length - 1 && question.type !== bank[index + 1].type);
-    if (transitionIndex < 0) throw new Error("source bank has no adjacent type transition");
+    const categoryOrder = new Map(
+      (window.QUIZ_BANK?.categories || []).map((category, index) => [category.id, index])
+    );
+    const sourceOrder = new Map(bank.map((question, index) => [question.id, index]));
+    const orderedBank = [...bank].sort((left, right) => {
+      const categoryDelta = (categoryOrder.get(left.category) ?? Number.MAX_SAFE_INTEGER)
+        - (categoryOrder.get(right.category) ?? Number.MAX_SAFE_INTEGER);
+      return categoryDelta || (sourceOrder.get(left.id) || 0) - (sourceOrder.get(right.id) || 0);
+    });
     const state = JSON.parse(localStorage.getItem(key) || "{}");
-    state.mode = "practice";
-    state.lastPracticeMode = "practice";
-    state.currentId = bank[transitionIndex].id;
-    state.lastPracticeId = bank[transitionIndex].id;
-    state.practiceLocations = { ...(state.practiceLocations || {}), practice: bank[transitionIndex].id };
-    state.selectedTypes = ["单选", "多选", "判断"];
-    state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    const currentIndex = orderedBank.findIndex((question) => question.id === state.currentId);
+    const transitions = orderedBank.flatMap((question, index) => {
+      if (index >= orderedBank.length - 1 || question.type === orderedBank[index + 1].type) return [];
+      const forward = (index - currentIndex + orderedBank.length) % orderedBank.length;
+      const backward = (currentIndex - index + orderedBank.length) % orderedBank.length;
+      return [{
+        index,
+        steps: Math.min(forward, backward),
+        action: forward <= backward ? "next-question" : "previous-question"
+      }];
+    });
+    const target = transitions.sort((left, right) => left.steps - right.steps)[0];
+    if (!target) throw new Error("source bank has no adjacent type transition");
     return {
-      beforeId: bank[transitionIndex].id,
-      beforeType: bank[transitionIndex].type,
-      afterId: bank[transitionIndex + 1].id,
-      afterType: bank[transitionIndex + 1].type,
-      transitionIndex
+      beforeId: orderedBank[target.index].id,
+      beforeType: orderedBank[target.index].type,
+      afterId: orderedBank[target.index + 1].id,
+      afterType: orderedBank[target.index + 1].type,
+      transitionIndex: target.index,
+      action: target.action,
+      steps: target.steps
     };
   }, STORAGE_KEY);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForFullBank(page);
+
+  const moveButton = page.locator(`button[data-action="${seeded.action}"]:not([disabled])`).first();
+  for (let index = 0; index < seeded.steps; index += 1) {
+    await moveButton.click({ timeout: 5000 });
+    await page.waitForTimeout(35);
+  }
+  const restored = await page.evaluate((key) => {
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const question = (window.QUIZ_BANK?.questions || []).find((item) => item.id === state.currentId);
+    return {
+      id: state.currentId,
+      type: question?.type || "",
+      mode: state.mode,
+      lastPracticeMode: state.lastPracticeMode,
+      practiceLocation: state.practiceLocations?.practice || ""
+    };
+  }, STORAGE_KEY);
+  if (restored.id !== seeded.beforeId || restored.type !== seeded.beforeType) {
+    throw new Error(`continuous practice boundary was not reached: ${JSON.stringify({ seeded, restored })}`);
+  }
   await clickIfReady(page, 'button[data-action="next-question"]:not([disabled])', "cross type boundary");
   const actual = await page.evaluate((key) => {
     const state = JSON.parse(localStorage.getItem(key) || "{}");
@@ -244,8 +278,7 @@ async function assertLongQuestionLayout(page) {
     state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
     state.studyMode = false;
     state.revealed = { ...(state.revealed || {}), [question.id]: false };
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    sessionStorage.setItem("__mobile_regression_smoke_seed__", JSON.stringify(state));
     return { id: question.id, type: question.type, contentLength: score(question) };
   }, STORAGE_KEY);
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -299,8 +332,7 @@ async function assertWrappedOptionsStayContained(page) {
     state.selectedCategories = window.QUIZ_BANK.categories.map((category) => category.id);
     state.drafts = { ...(state.drafts || {}), [question.id]: (question.options || []).map((option) => option.key) };
     state.revealed = { ...(state.revealed || {}), [question.id]: true };
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    sessionStorage.setItem("__mobile_regression_smoke_seed__", JSON.stringify(state));
     return { id: question.id, optionCount: question.options.length };
   }, STORAGE_KEY);
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -375,8 +407,7 @@ async function seedWrongRecord(page) {
       lastAt: now,
       active: true
     };
-    localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(`${key}-backup`, JSON.stringify(state));
+    sessionStorage.setItem("__mobile_regression_smoke_seed__", JSON.stringify(state));
     return question.id;
   }, STORAGE_KEY);
 }
@@ -473,6 +504,13 @@ async function run() {
   const context = await browser.newContext({ ...devices["iPhone 14"], locale: "zh-CN" });
   const apiWrites = await installStateApiMock(context);
   const page = await context.newPage();
+  await page.addInitScript(({ key, marker }) => {
+    const raw = sessionStorage.getItem(marker);
+    if (!raw) return;
+    localStorage.setItem(key, raw);
+    localStorage.setItem(`${key}-backup`, raw);
+    sessionStorage.removeItem(marker);
+  }, { key: STORAGE_KEY, marker: STATE_SEED_MARKER });
   const browserErrors = [];
   const results = [];
   page.on("pageerror", (error) => browserErrors.push(`pageerror:${error.message}`));

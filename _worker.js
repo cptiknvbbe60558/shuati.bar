@@ -22,6 +22,10 @@ export default {
       return handleStateApi(request, env, url);
     }
 
+    if (url.pathname.startsWith("/api/session/")) {
+      return handleSessionApi(request, env, url);
+    }
+
     if (request.method === "GET" && url.pathname === "/index.html") {
       const rootUrl = new URL("/", url.origin);
       if (url.search) rootUrl.search = url.search;
@@ -117,6 +121,92 @@ async function handleStateApi(request, env, url) {
   }
 
   return json({ success: false, error: "method_not_allowed" }, 405, headers);
+}
+
+async function handleSessionApi(request, env, url) {
+  const headers = {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json; charset=utf-8"
+  };
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+  if (!env.SHUATI_DB && !env.SHUATI_STATE) {
+    return json({ success: false, error: "state_storage_not_configured" }, 503, headers);
+  }
+
+  const staffId = decodeURIComponent(url.pathname.slice("/api/session/".length)).trim();
+  if (!isVerifiedStaffId(staffId)) {
+    return json({ success: false, error: "invalid_staff_id" }, 400, headers);
+  }
+
+  const storageId = `session:${staffId}`;
+  const key = `staff:${staffId}:session`;
+  const readCurrent = async () => {
+    const d1Value = await readD1State(env, storageId);
+    if (d1Value) return d1Value;
+    return env.SHUATI_STATE
+      ? (await env.SHUATI_STATE.get(key, { type: "json" })) || {}
+      : {};
+  };
+
+  if (request.method === "GET") {
+    return json({ success: true, value: await readCurrent() }, 200, headers);
+  }
+
+  if (request.method === "POST") {
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      return json({ success: false, error: "invalid_json" }, 400, headers);
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return json({ success: false, error: "invalid_payload" }, 400, headers);
+    }
+
+    const merged = mergeSessionPayload(await readCurrent(), payload);
+    const wroteD1 = await writeD1State(env, storageId, merged);
+    if (!wroteD1) {
+      if (!env.SHUATI_STATE) {
+        return json({ success: false, error: "state_write_failed" }, 503, headers);
+      }
+      try {
+        await env.SHUATI_STATE.put(key, JSON.stringify(merged));
+      } catch (error) {
+        console.error("session_write_failed", {
+          staffId,
+          message: error?.message || String(error)
+        });
+        return json({ success: false, error: "state_write_failed" }, 503, headers);
+      }
+    }
+    return json({ success: true, value: merged }, 200, headers);
+  }
+
+  return json({ success: false, error: "method_not_allowed" }, 405, headers);
+}
+
+function mergeSessionPayload(current = {}, incoming = {}) {
+  const chooseNewer = (left, right, stamp) => {
+    const leftAt = Date.parse(stamp(left) || "") || 0;
+    const rightAt = Date.parse(stamp(right) || "") || 0;
+    return rightAt >= leftAt ? right : left;
+  };
+  return {
+    version: Math.max(Number(current.version) || 0, Number(incoming.version) || 0, 1),
+    updatedAt: new Date().toISOString(),
+    wrongPracticeSession: chooseNewer(
+      current.wrongPracticeSession || {},
+      incoming.wrongPracticeSession || {},
+      (value) => value?.updatedAt
+    ),
+    suiteSession: chooseNewer(
+      current.suiteSession || {},
+      incoming.suiteSession || {},
+      (value) => value?.updatedAt
+    )
+  };
 }
 
 function isVerifiedStaffId(value) {
