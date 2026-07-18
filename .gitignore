@@ -2,5 +2,6 @@
 state-backups/
 .deploy/
 audit-screenshots/
+audit-artifacts/
 __pycache__/
 *.pyc
