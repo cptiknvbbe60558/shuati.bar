@@ -205,6 +205,11 @@ function mergeSessionPayload(current = {}, incoming = {}) {
       current.suiteSession || {},
       incoming.suiteSession || {},
       (value) => value?.updatedAt
+    ),
+    wrongEliminationSession: chooseNewer(
+      current.wrongEliminationSession || {},
+      incoming.wrongEliminationSession || {},
+      (value) => value?.updatedAt
     )
   };
 }

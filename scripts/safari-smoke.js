@@ -123,6 +123,21 @@ async function run() {
     const dockLabels = await page.evaluate(() => (
       [...document.querySelectorAll(".practice-dock button")].map((button) => button.innerText.trim() || button.getAttribute("aria-label") || "")
     ));
+
+    await page.locator('button[data-action="toggle-utility-panel"][aria-label="其他"]').click();
+    await page.locator('button[data-action="set-utility-panel"][data-panel="progress"]').click();
+    await page.waitForTimeout(250);
+    const progressDisplay = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll(".utility-sheet .progress-row")].map((row) => {
+        const value = row.querySelector(".progress-value")?.textContent?.trim() || "";
+        const barValue = row.querySelector(".progress-bar")?.style.getPropertyValue("--value")?.trim() || "";
+        return { value, barValue };
+      });
+      return {
+        summary: document.querySelector(".utility-sheet .progress-summary")?.textContent?.trim() || "",
+        rows
+      };
+    });
     const sw = await serviceWorkerState(page);
     const storedStaffId = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) || "{}").staffId || "", STORAGE_KEY);
 
@@ -131,6 +146,15 @@ async function run() {
     assert(storedStaffId === config.staffId, `staff id was not stored locally: ${storedStaffId}`);
     assert(dockLabels.includes("强化练习"), `suite nav missing in WebKit dock: ${JSON.stringify(dockLabels)}`);
     assert(!dockLabels.includes("随机"), `removed random button visible in WebKit dock: ${JSON.stringify(dockLabels)}`);
+    assert(/^\d+\/\d+ · \d+%$/.test(progressDisplay.summary), `progress summary percentage missing: ${JSON.stringify(progressDisplay)}`);
+    assert(progressDisplay.rows.length >= 8, `category progress rows missing: ${JSON.stringify(progressDisplay)}`);
+    for (const row of progressDisplay.rows) {
+      const match = row.value.match(/^(\d+)\/(\d+) · (\d+)%$/);
+      assert(match, `category percentage text malformed: ${JSON.stringify(row)}`);
+      const expected = Number(match[2]) ? Math.round((Number(match[1]) / Number(match[2])) * 100) : 0;
+      assert(Number(match[3]) === expected, `category percentage calculation mismatch: ${JSON.stringify(row)}`);
+      assert(row.barValue === `${expected}%`, `category progress bar mismatch: ${JSON.stringify(row)}`);
+    }
     assert(sw.registrations === 0, `service worker registration remains in WebKit: ${JSON.stringify(sw)}`);
     assert(!sw.controlled, `page is controlled by service worker in WebKit: ${JSON.stringify(sw)}`);
     assert(sw.cacheKeys.length === 0, `old quiz caches remain in WebKit: ${JSON.stringify(sw)}`);
@@ -142,6 +166,7 @@ async function run() {
       staffId: config.staffId,
       title,
       questionCount: count,
+      progressDisplay,
       serviceWorker: sw,
       interceptedWrites: writes.length,
       dockLabels

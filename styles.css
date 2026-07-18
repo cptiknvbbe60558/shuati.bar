@@ -415,6 +415,13 @@ button {
   font-size: 12px;
 }
 
+.progress-value,
+.progress-summary {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .progress-bar {
   overflow: hidden;
   height: 7px;
@@ -4281,9 +4288,60 @@ body.practice-fit .practice-study-area .option-text {
   overflow-wrap: anywhere;
 }
 
+/* The finish action lives in the card header, so the seven remaining suite
+   controls must expand across the entire dock without an empty eighth slot. */
+.practice-dock.suite-dock .practice-toolbar.dock-primary-row,
+body.practice-fit .practice-dock.suite-dock .practice-toolbar.dock-primary-row {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+}
+
 .wrong-view-tabs {
   width: 92px;
   min-width: 92px;
+}
+
+/* Suite papers keep the destructive finish action away from the thumb dock. */
+.question-head.has-card-action,
+body.practice-fit .question-head.has-card-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 8px;
+}
+
+.question-head.has-card-action .badges,
+body.practice-fit .question-head.has-card-action .badges {
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.question-head.has-card-action .actual-category-badge {
+  display: none;
+}
+
+.question-head.has-card-action .question-progress-row,
+body.practice-fit .question-head.has-card-action .question-progress-row {
+  grid-column: 1 / -1;
+}
+
+.suite-finish-button,
+body.practice-fit .suite-finish-button {
+  min-width: 64px;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid rgba(45, 49, 56, 0.09);
+  border-radius: 13px;
+  background: rgba(248, 249, 251, 0.76);
+  color: rgba(31, 35, 41, 0.78);
+  font-size: 11px;
+  font-weight: 680;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 3px 9px rgba(45, 49, 56, 0.05);
+}
+
+.suite-dock .practice-toolbar.dock-primary-row,
+body.practice-fit .suite-dock .practice-toolbar.dock-primary-row {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
 }
 
 /* Final answer-state and Safari scroll-restoration fixes. */
@@ -7045,6 +7103,13 @@ body.practice-fit .practice-study-area .option-text {
   white-space: normal;
   overflow: visible;
   overflow-wrap: anywhere;
+}
+
+/* The finish action lives in the card header, so the seven remaining suite
+   controls must expand across the entire dock without an empty eighth slot. */
+.practice-dock.suite-dock .practice-toolbar.dock-primary-row,
+body.practice-fit .practice-dock.suite-dock .practice-toolbar.dock-primary-row {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
 }
 
 .wrong-view-tabs {

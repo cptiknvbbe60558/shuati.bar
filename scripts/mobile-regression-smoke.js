@@ -141,11 +141,11 @@ async function assertDockHealthy(page, label) {
       }
     };
   }));
-  if (navButtons.length !== 6) {
-    throw new Error(`${label}: expected six dock navigation buttons: ${JSON.stringify(navButtons)}`);
+  if (navButtons.length !== 7) {
+    throw new Error(`${label}: expected seven dock navigation buttons: ${JSON.stringify(navButtons)}`);
   }
   const navLabels = navButtons.map((button) => button.text);
-  const expectedNavLabels = ["错题", "收藏", "强化练习", "模拟考试", "练习", "其他"];
+  const expectedNavLabels = ["错题", "收藏", "强化练习", "消灭错题", "模拟考试", "练习", "其他"];
   if (JSON.stringify(navLabels) !== JSON.stringify(expectedNavLabels)) {
     throw new Error(`${label}: unexpected dock navigation labels: ${JSON.stringify(navLabels)}`);
   }
@@ -153,6 +153,32 @@ async function assertDockHealthy(page, label) {
     throw new Error(`${label}: dock navigation wrapped to multiple rows: ${JSON.stringify(navButtons)}`);
   }
   return snapshot;
+}
+
+async function assertProgressPercentages(page, label) {
+  await clickIfReady(page, 'button[data-action="toggle-utility-panel"][aria-label="其他"]', `${label}: open other panel`);
+  await clickIfReady(page, 'button[data-action="set-utility-panel"][data-panel="progress"]', `${label}: open progress panel`);
+  const display = await page.evaluate(() => ({
+    summary: document.querySelector(".utility-sheet .progress-summary")?.textContent?.trim() || "",
+    rows: [...document.querySelectorAll(".utility-sheet .progress-row")].map((row) => ({
+      value: row.querySelector(".progress-value")?.textContent?.trim() || "",
+      barValue: row.querySelector(".progress-bar")?.style.getPropertyValue("--value")?.trim() || ""
+    }))
+  }));
+  if (!/^\d+\/\d+ · \d+%$/.test(display.summary) || display.rows.length < 8) {
+    throw new Error(`${label}: progress percentage display missing: ${JSON.stringify(display)}`);
+  }
+  for (const row of display.rows) {
+    const match = row.value.match(/^(\d+)\/(\d+) · (\d+)%$/);
+    if (!match) throw new Error(`${label}: malformed progress percentage: ${JSON.stringify(row)}`);
+    const expected = Number(match[2]) ? Math.round((Number(match[1]) / Number(match[2])) * 100) : 0;
+    if (Number(match[3]) !== expected || row.barValue !== `${expected}%`) {
+      throw new Error(`${label}: progress text/bar mismatch: ${JSON.stringify(row)}`);
+    }
+  }
+  await page.locator('.utility-backdrop[data-action="close-utility-panel"]').dispatchEvent("click");
+  await page.waitForTimeout(250);
+  return display;
 }
 
 async function assertContinuousPracticeOrder(page, label) {
@@ -412,8 +438,41 @@ async function seedWrongRecord(page) {
   }, STORAGE_KEY);
 }
 
+function normalizedQuestionBankScript() {
+  return `
+    (() => {
+      const seen = new Set();
+      const idCounts = new Map();
+      return (window.QUIZ_BANK?.questions || []).flatMap((question) => {
+        const signature = \`\${question.id}|\${(question.options || []).map((option) => \`\${option.key}:\${option.text}\`).join(",")}\`;
+        if (seen.has(signature)) return [];
+        seen.add(signature);
+        const count = (idCounts.get(question.id) || 0) + 1;
+        idCounts.set(question.id, count);
+        return [{ ...question, id: count > 1 ? \`\${question.id}__v\${count - 1}\` : question.id }];
+      });
+    })()
+  `;
+}
+
+function visibleQuestionIdFromState(state = {}) {
+  if (state.exam?.active && Array.isArray(state.exam.ids)) {
+    const ids = state.exam.reviewWrongOnly && Array.isArray(state.exam.wrongIds)
+      ? state.exam.wrongIds
+      : state.exam.ids;
+    return ids[Number(state.exam.index) || 0] || "";
+  }
+  if (state.mode === "suite" && state.suite?.active && Array.isArray(state.suite.ids)) {
+    return state.suite.ids[Number(state.suite.index) || 0] || "";
+  }
+  if (state.mode === "wrong_elimination" && state.wrongEliminationSuite?.active && Array.isArray(state.wrongEliminationSuite.ids)) {
+    return state.wrongEliminationSuite.ids[Number(state.wrongEliminationSuite.index) || 0] || "";
+  }
+  return typeof state.currentId === "string" ? state.currentId : "";
+}
+
 async function visibleOptionsMatchBank(page, label) {
-  const result = await page.evaluate((scopeLabel) => {
+  const result = await page.evaluate(({ scopeLabel, key, bankExpression, visibleIdFunction }) => {
     const questionText = document.querySelector(".question-card .question-text");
     const optionButtons = [...document.querySelectorAll(".question-card .option-button")];
     const domOptions = optionButtons.map((button) => ({
@@ -421,7 +480,17 @@ async function visibleOptionsMatchBank(page, label) {
       text: button.querySelector(".option-text")?.textContent || ""
     }));
     const normalizedText = (questionText?.textContent || "").replace(/(全选|正确)$/u, "").trim();
-    const bankQuestion = (window.QUIZ_BANK?.questions || []).find((question) => String(question.question || "").trim() === normalizedText);
+    const bank = eval(bankExpression);
+    const state = JSON.parse(localStorage.getItem(key) || "{}");
+    const visibleId = eval(`(${visibleIdFunction})`)(state);
+    let bankQuestion = visibleId ? bank.find((question) => question.id === visibleId) : null;
+    if (!bankQuestion) {
+      const textMatches = bank.filter((question) => String(question.question || "").trim() === normalizedText);
+      bankQuestion = textMatches.find((question) => JSON.stringify((question.options || []).map((option) => ({
+        key: option.key,
+        text: option.text || ""
+      }))) === JSON.stringify(domOptions)) || textMatches[0] || null;
+    }
     const bankOptions = (bankQuestion?.options || []).map((option) => ({
       key: option.key,
       text: option.text || ""
@@ -429,13 +498,20 @@ async function visibleOptionsMatchBank(page, label) {
     return {
       label: scopeLabel,
       matchedQuestion: Boolean(bankQuestion),
+      visibleId,
+      matchedId: bankQuestion?.id || "",
       optionCount: domOptions.length,
       sameOrder: JSON.stringify(domOptions) === JSON.stringify(bankOptions),
       question: normalizedText.slice(0, 100),
       domOptions,
       bankOptions
     };
-  }, label);
+  }, {
+    scopeLabel: label,
+    key: STORAGE_KEY,
+    bankExpression: normalizedQuestionBankScript(),
+    visibleIdFunction: visibleQuestionIdFromState.toString()
+  });
   if (!result.matchedQuestion) throw new Error(`${label}: visible question not found in bank: ${result.question}`);
   if (!result.optionCount) throw new Error(`${label}: no visible options`);
   if (!result.sameOrder) throw new Error(`${label}: option order differs from source bank: ${JSON.stringify(result)}`);
@@ -443,19 +519,10 @@ async function visibleOptionsMatchBank(page, label) {
 }
 
 async function assertScopedPracticeOrdinal(page, label) {
-  const result = await page.evaluate(({ scopeLabel, key }) => {
+  const result = await page.evaluate(({ scopeLabel, key, bankExpression, visibleIdFunction }) => {
     const questionText = document.querySelector(".question-card .question-text")?.textContent || "";
     const normalizedText = questionText.replace(/(全选|正确)$/u, "").trim();
-    const seen = new Set();
-    const idCounts = new Map();
-    const bank = (window.QUIZ_BANK?.questions || []).flatMap((question) => {
-      const signature = `${question.id}|${(question.options || []).map((option) => `${option.key}:${option.text}`).join(",")}`;
-      if (seen.has(signature)) return [];
-      seen.add(signature);
-      const count = (idCounts.get(question.id) || 0) + 1;
-      idCounts.set(question.id, count);
-      return [{ ...question, id: count > 1 ? `${question.id}__v${count - 1}` : question.id }];
-    });
+    const bank = eval(bankExpression);
     const categories = window.QUIZ_BANK?.categories || [];
     const categoryOrder = new Map(categories.map((category, index) => [category.id, index]));
     const sourceOrder = new Map(bank.map((question, index) => [question.id, index]));
@@ -469,16 +536,26 @@ async function assertScopedPracticeOrdinal(page, label) {
           - (categoryOrder.get(right.category) ?? Number.MAX_SAFE_INTEGER);
         return categoryDelta || (sourceOrder.get(left.id) || 0) - (sourceOrder.get(right.id) || 0);
       });
-    const scopedIndex = scoped.findIndex((question) => String(question.question || "").trim() === normalizedText);
+    const visibleId = eval(`(${visibleIdFunction})`)(state);
+    let scopedIndex = visibleId ? scoped.findIndex((question) => question.id === visibleId) : -1;
+    if (scopedIndex < 0) {
+      scopedIndex = scoped.findIndex((question) => String(question.question || "").trim() === normalizedText);
+    }
     return {
       label: scopeLabel,
       visible: document.querySelector(".question-index")?.textContent?.trim() || "",
       expected: scopedIndex >= 0 ? `${scopedIndex + 1}/${scoped.length}` : "",
+      visibleId,
       scopedIndex,
       scopedTotal: scoped.length,
       mode: state.mode
     };
-  }, { scopeLabel: label, key: STORAGE_KEY });
+  }, {
+    scopeLabel: label,
+    key: STORAGE_KEY,
+    bankExpression: normalizedQuestionBankScript(),
+    visibleIdFunction: visibleQuestionIdFromState.toString()
+  });
   if (result.scopedIndex < 0 || result.visible !== result.expected) {
     throw new Error(`${label}: incorrect scoped question ordinal: ${JSON.stringify(result)}`);
   }
@@ -525,6 +602,7 @@ async function run() {
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForFullBank(page);
     results.push({ step: "login", dock: await assertDockHealthy(page, "login") });
+    results.push({ step: "progress-percentages", display: await assertProgressPercentages(page, "progress-percentages") });
     await clickIfReady(page, 'button[data-mode="practice"]', "open continuous practice");
     results.push({
       step: "practice-order",

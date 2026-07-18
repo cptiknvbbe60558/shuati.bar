@@ -136,13 +136,35 @@ async function assertSuitePrimaryDockOrder(page, label) {
     "next-suite",
     "suite-submit-answer",
     "suite-reveal-answer",
-    "finish-suite",
     "suite-submit-answer",
     "previous-suite",
     "next-suite"
   ];
   if (JSON.stringify(primaryActions) !== JSON.stringify(expected)) {
     throw new Error(`${label}: suite dock primary order changed: ${JSON.stringify(primaryActions)}`);
+  }
+  const finish = page.locator('.question-head .suite-finish-button[data-action="finish-suite"]');
+  if ((await finish.count()) !== 1 || !(await finish.isVisible().catch(() => false))) {
+    throw new Error(`${label}: top-right finish button missing or hidden`);
+  }
+  if (await page.locator('.practice-dock button[data-action="finish-suite"]').count()) {
+    throw new Error(`${label}: finish button is still present in the bottom dock`);
+  }
+  const fill = await page.evaluate(() => {
+    const row = document.querySelector(".suite-dock .dock-primary-row");
+    const buttons = row ? [...row.querySelectorAll("button")] : [];
+    const rowRect = row?.getBoundingClientRect();
+    const rects = buttons.map((button) => button.getBoundingClientRect());
+    return {
+      count: buttons.length,
+      leftGap: rowRect && rects.length ? rects[0].left - rowRect.left : Infinity,
+      rightGap: rowRect && rects.length ? rowRect.right - rects[rects.length - 1].right : Infinity,
+      widths: rects.map((rect) => rect.width)
+    };
+  });
+  const widthSpread = fill.widths.length ? Math.max(...fill.widths) - Math.min(...fill.widths) : Infinity;
+  if (fill.count !== 7 || Math.abs(fill.leftGap) > 1 || Math.abs(fill.rightGap) > 1 || widthSpread > 1) {
+    throw new Error(`${label}: seven suite controls do not fill the row evenly: ${JSON.stringify(fill)}`);
   }
   return primaryActions;
 }

@@ -265,6 +265,7 @@ body.practice-fit .practice-study-area .option-button.wrong.selected .option-key
 
 body.practice-fit .answer-panel-outside,
 .answer-panel-outside {
+  margin-top: 17px !important;
   border: 1px solid var(--ui-line) !important;
   background: var(--ui-surface) !important;
   box-shadow: var(--ui-shadow) !important;
@@ -348,12 +349,21 @@ body.practice-fit .solid-button:not(:disabled),
 }
 
 .memorize-button.active,
+.memorize-button[aria-pressed="true"],
 .practice-dock .memorize-button.active,
-body.practice-fit .practice-dock .memorize-button.active {
-  border-color: var(--ui-purple-line) !important;
-  background: var(--ui-purple-fill) !important;
-  color: var(--ui-purple) !important;
-  box-shadow: none !important;
+.practice-dock .memorize-button[aria-pressed="true"],
+body.practice-fit .practice-dock .memorize-button.active,
+body.practice-fit .practice-dock .memorize-button[aria-pressed="true"],
+.practice-dock .practice-toolbar.dock-primary-row button.memorize-button.active,
+.practice-dock .practice-toolbar.dock-primary-row button.memorize-button[aria-pressed="true"],
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button.memorize-button.active,
+body.practice-fit .practice-dock .practice-toolbar.dock-primary-row button.memorize-button[aria-pressed="true"] {
+  border-color: #dfc5ed !important;
+  background: linear-gradient(135deg, #fbeaf5 0%, #efecff 100%) !important;
+  color: #9b56bd !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 6px 16px rgba(176, 110, 214, 0.12) !important;
 }
 
 .dock-nav-row,
@@ -537,5 +547,43 @@ textarea:focus-visible {
   .practice-dock,
   body.practice-fit .practice-dock {
     border-radius: 24px !important;
+  }
+}
+
+/* Seven primary destinations share one stable row, including 消灭错题. */
+.dock-nav-row,
+body.practice-fit .dock-nav-row {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+}
+
+.dock-nav-row > .tab-button,
+body.practice-fit .dock-nav-row > .tab-button {
+  min-width: 0 !important;
+  padding-inline: 1px !important;
+  white-space: nowrap !important;
+}
+
+.dock-nav-row > .tab-button[data-mode="suite"],
+.dock-nav-row > .tab-button[data-mode="wrong_elimination"],
+.dock-nav-row > .tab-button[data-mode="exam300"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="wrong_elimination"],
+body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+  font-size: 8.5px !important;
+}
+
+@media (max-width: 390px) {
+  .dock-nav-row > .tab-button,
+  body.practice-fit .dock-nav-row > .tab-button {
+    font-size: 8px !important;
+  }
+
+  .dock-nav-row > .tab-button[data-mode="suite"],
+  .dock-nav-row > .tab-button[data-mode="wrong_elimination"],
+  .dock-nav-row > .tab-button[data-mode="exam300"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="suite"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="wrong_elimination"],
+  body.practice-fit .dock-nav-row > .tab-button[data-mode="exam300"] {
+    font-size: 7.5px !important;
   }
 }

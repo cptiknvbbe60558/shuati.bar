@@ -24,6 +24,8 @@ function summarizeState(value = {}) {
     mastery: Object.keys(value.mastery || {}).length,
     suitePapers: Array.isArray(value.suitePapers) ? value.suitePapers.length : 0,
     suiteExposure: Object.keys(value.suiteExposure || {}).length,
+	wrongEliminationPapers: Array.isArray(value.wrongEliminationPapers) ? value.wrongEliminationPapers.length : 0,
+	wrongEliminationExposure: Object.keys(value.wrongEliminationExposure || {}).length,
     updatedAt: value.updatedAt || value._protectedUpdatedAt || null
   };
 }
@@ -35,14 +37,17 @@ function hasUsefulState(summary) {
     summary.notes ||
     summary.mastery ||
     summary.suitePapers ||
-    summary.suiteExposure
+	summary.suiteExposure ||
+	summary.wrongEliminationPapers ||
+	summary.wrongEliminationExposure
   );
 }
 
 function hasUsefulSession(session = {}) {
   return Boolean(
     session?.wrongPracticeSession?.updatedAt
-    || session?.suiteSession?.updatedAt
+	|| session?.suiteSession?.updatedAt
+	|| session?.wrongEliminationSession?.updatedAt
   );
 }
 

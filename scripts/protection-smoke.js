@@ -105,6 +105,7 @@ async function seedProtectedState(page, staffId) {
       notes: { [judge.id]: "reset should keep this note" },
       examExposure: { [multiple.id]: 4 },
       suiteExposure: { [single.id]: 7 },
+      wrongEliminationExposure: { [single.id]: 3 },
       optionOrders: { [single.id]: ["D", "C", "B", "A"] },
       utilityPanel: "",
       categoryMenuOpen: false,
@@ -150,6 +151,21 @@ async function seedProtectedState(page, staffId) {
           ]
         }
       ],
+      wrongEliminationPapers: [
+        {
+          id: "wrong-elimination-protection-smoke",
+          number: 999,
+          title: "消灭错题（保护测试）",
+          wrongElimination: true,
+          createdAt: now,
+          ids: [single.id],
+          priorityIds: [single.id],
+          typeCounts: { "单选": 1, "多选": 0, "判断": 0 },
+          optionOrders: {},
+          attempts: []
+        }
+      ],
+      wrongEliminationSuite: null,
       suite: null,
       _schemaVersion: 4,
       _savedAt: now,
@@ -192,7 +208,7 @@ async function assertDockShape(page) {
     `primary dock actions changed: ${JSON.stringify(dock.primary)}`
   );
   assert(
-    JSON.stringify(dock.nav) === JSON.stringify(["错题", "收藏", "强化练习", "模拟考试", "练习", "其他"]),
+    JSON.stringify(dock.nav) === JSON.stringify(["错题", "收藏", "强化练习", "消灭错题", "模拟考试", "练习", "其他"]),
     `dock nav labels changed: ${JSON.stringify(dock.nav)}`
   );
   for (const removed of ["随机", "判断正确", "全选", "套题练习"]) {
@@ -213,15 +229,17 @@ async function resetProgressThroughUi(page) {
   await clickRequired(page, 'button[data-action="reset-progress"]', "reset progress");
 }
 
-async function assertResetPreservedProtected(page, seed) {
+async function assertResetPreservedProtected(page, seed, staffId) {
   const stored = await readStoredState(page);
-  assert(stored.staffId === "704001", `staff id was not preserved: ${stored.staffId}`);
+  assert(stored.staffId === staffId, `staff id was not preserved: ${stored.staffId}`);
   assert(stored.wrong?.[seed.singleId]?.active !== false, "wrong record was removed by reset");
   assert(stored.favorites?.[seed.multipleId] === true, "favorite was removed by reset");
   assert(stored.favoriteSync?.[seed.multipleId]?.active === true, "favorite sync was removed by reset");
   assert(stored.notes?.[seed.judgeId] === "reset should keep this note", "note was removed by reset");
   assert(Array.isArray(stored.suitePapers) && stored.suitePapers.some((paper) => paper.id === "suite-protection-smoke"), "suite papers were removed by reset");
   assert(stored.suiteExposure?.[seed.singleId] === 7, "suite exposure was removed by reset");
+  assert(Array.isArray(stored.wrongEliminationPapers) && stored.wrongEliminationPapers.some((paper) => paper.id === "wrong-elimination-protection-smoke"), "wrong elimination papers were removed by reset");
+  assert(stored.wrongEliminationExposure?.[seed.singleId] === 3, "wrong elimination exposure was removed by reset");
   assert(stored.mastery?.[seed.judgeId]?.correctStreak === 5, "mastery record was removed by reset");
   assert(!Object.keys(stored.progress || {}).length, "progress was not cleared by reset");
   assert(!Object.keys(stored.drafts || {}).length, "drafts were not cleared by reset");
@@ -232,7 +250,8 @@ async function assertResetPreservedProtected(page, seed) {
     wrong: Object.keys(stored.wrong || {}).length,
     favorites: Object.keys(stored.favorites || {}).length,
     notes: Object.keys(stored.notes || {}).length,
-    suitePapers: stored.suitePapers.length
+    suitePapers: stored.suitePapers.length,
+    wrongEliminationPapers: stored.wrongEliminationPapers.length
   };
 }
 
@@ -301,7 +320,7 @@ async function run() {
     assert(sw.registrations === 0, `service worker registrations remain: ${JSON.stringify(sw)}`);
     assert(sw.cacheKeys.length === 0, `old quiz caches remain: ${JSON.stringify(sw)}`);
     await resetProgressThroughUi(page);
-    const preserved = await assertResetPreservedProtected(page, seed);
+    const preserved = await assertResetPreservedProtected(page, seed, config.staffId);
     if (browserErrors.length) throw new Error(`browser errors: ${browserErrors.join("; ")}`);
     console.log(JSON.stringify({
       ok: true,

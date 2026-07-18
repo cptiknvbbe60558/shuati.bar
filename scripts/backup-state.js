@@ -32,12 +32,16 @@ function countActiveMap(map = {}) {
 
 function summarizeState(value = {}) {
   return {
+    progress: Object.keys(value.progress || {}).length,
     wrong: Object.values(value.wrong || {}).filter((record) => record?.active !== false).length,
     favorites: countActiveMap(value.favorites || {}),
     notes: Object.keys(value.notes || {}).length,
     mastery: Object.keys(value.mastery || {}).length,
+    examExposure: Object.keys(value.examExposure || {}).length,
     suitePapers: Array.isArray(value.suitePapers) ? value.suitePapers.length : 0,
     suiteExposure: Object.keys(value.suiteExposure || {}).length,
+	wrongEliminationPapers: Array.isArray(value.wrongEliminationPapers) ? value.wrongEliminationPapers.length : 0,
+	wrongEliminationExposure: Object.keys(value.wrongEliminationExposure || {}).length,
     updatedAt: value.updatedAt || value._protectedUpdatedAt || null
   };
 }
@@ -45,18 +49,23 @@ function summarizeState(value = {}) {
 function hasUsefulState(summary) {
   return Boolean(
     summary.wrong ||
+    summary.progress ||
     summary.favorites ||
     summary.notes ||
     summary.mastery ||
+    summary.examExposure ||
     summary.suitePapers ||
-    summary.suiteExposure
+	summary.suiteExposure ||
+	summary.wrongEliminationPapers ||
+	summary.wrongEliminationExposure
   );
 }
 
 function hasUsefulSession(session = {}) {
   return Boolean(
     session?.wrongPracticeSession?.updatedAt
-    || session?.suiteSession?.updatedAt
+	|| session?.suiteSession?.updatedAt
+	|| session?.wrongEliminationSession?.updatedAt
   );
 }
 
@@ -99,12 +108,16 @@ async function run() {
   const states = {};
   const errors = [];
   const totals = {
+    progress: 0,
     wrong: 0,
     favorites: 0,
     notes: 0,
     mastery: 0,
+    examExposure: 0,
     suitePapers: 0,
-    suiteExposure: 0
+	suiteExposure: 0,
+	wrongEliminationPapers: 0,
+	wrongEliminationExposure: 0
   };
 
   for (const staffId of staffIds()) {
